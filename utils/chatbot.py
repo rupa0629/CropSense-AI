@@ -1,216 +1,208 @@
-"""
-chatbot.py
-----------
-Rule-based farmer chatbot for common rice cultivation questions.
-
-The bot uses keyword matching to find the best answer.
-Responses are written in simple, farmer-friendly English.
-"""
+﻿"""Advanced chatbot engine: OpenAI-first, context-aware, safety-hardened fallback."""
 
 from __future__ import annotations
+
+import json
+import os
 import re
+from typing import Any
 
-# ── Knowledge base: (keywords, answer) pairs ─────────────────────────────────
-# Each entry is (list_of_trigger_keywords, response_text)
-_KB: list[tuple[list[str], str]] = [
+import requests
 
-    # ── Disease identification ────────────────────────────────────────────────
-    (
-        ["leaf blast", "blast", "grey spot", "gray spot", "diamond spot"],
-        "🍃 **Leaf Blast** causes diamond-shaped grey lesions with brown borders on leaves. "
-        "It is caused by the fungus *Magnaporthe oryzae*. It spreads fast in cool, humid weather. "
-        "Reduce nitrogen fertiliser and spray Tricyclazole to control it.",
-    ),
-    (
-        ["brown spot", "brown lesion", "brown patch"],
-        "🟤 **Brown Spot** appears as oval/circular brown lesions with yellow halos. "
-        "It is linked to nutrient deficiency — especially low potassium. "
-        "Apply potassium fertiliser and spray Mancozeb to manage it.",
-    ),
-    (
-        ["bacterial blight", "blight", "kresek", "yellow leaf", "wilting"],
-        "🦠 **Bacterial Blight** causes water-soaked streaks that turn yellow, then white. "
-        "It spreads through water and wounds. Avoid excess nitrogen; spray copper oxychloride.",
-    ),
-    (
-        ["healthy", "no disease", "normal", "good crop"],
-        "✅ Great news! A **healthy crop** needs balanced NPK fertiliser, "
-        "good water management (alternate wetting and drying), and weekly scouting.",
-    ),
+_OPENAI_URL = "https://api.openai.com/v1/responses"
+_DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+_TIMEOUT = 40
 
-    # ── Symptoms & diagnosis ──────────────────────────────────────────────────
-    (
-        ["yellow", "yellowing", "pale leaves"],
-        "💛 Yellowing leaves can indicate:\n"
-        "• Nitrogen deficiency (uniform yellow from older leaves)\n"
-        "• Bacterial blight (yellow streaks from leaf tips)\n"
-        "• Waterlogging (roots suffocating)\n"
-        "Upload an image for accurate diagnosis!",
-    ),
-    (
-        ["white tip", "dead tip", "tip burn"],
-        "White / burnt leaf tips are often early signs of **Bacterial Blight** or severe **heat stress**. "
-        "Check if tips have watery streaks — that confirms blight. "
-        "Drain excess water and apply copper-based spray.",
-    ),
-    (
-        ["spots", "lesion", "marks"],
-        "Spots on rice leaves could be Leaf Blast (grey, diamond-shaped) or Brown Spot (brown, oval). "
-        "Upload your field photo so I can give you the exact diagnosis! 📸",
-    ),
-
-    # ── Fertiliser ────────────────────────────────────────────────────────────
-    (
-        ["fertiliser", "fertilizer", "npk", "urea", "nutrient", "manure"],
-        "🌾 **Fertiliser guide for rice:**\n"
-        "• **Basal (before transplanting):** 30 kg N + 30 kg P + 30 kg K per hectare\n"
-        "• **Tillering (25–30 days):** Top-dress 30 kg N/ha\n"
-        "• **Panicle initiation (55–60 days):** Top-dress 30 kg N/ha\n"
-        "• Use less N if disease is present!",
-    ),
-    (
-        ["nitrogen", "urea"],
-        "⚠️ Excess **nitrogen** promotes lush growth but increases Leaf Blast and Bacterial Blight risk. "
-        "Apply N in splits — never all at once. If disease is detected, skip the next N dose.",
-    ),
-    (
-        ["potassium", "potash"],
-        "✅ **Potassium (K)** strengthens cell walls and reduces Brown Spot risk. "
-        "Apply Muriate of Potash (MOP) @ 60 kg/ha as basal dose.",
-    ),
-
-    # ── Pesticide / treatment ─────────────────────────────────────────────────
-    (
-        ["pesticide", "spray", "fungicide", "chemical", "tricyclazole", "mancozeb", "copper"],
-        "🧪 **Common sprays for rice diseases:**\n"
-        "• Leaf Blast → Tricyclazole 75 WP @ 0.6 g/L\n"
-        "• Brown Spot → Mancozeb 75 WP @ 2.5 g/L\n"
-        "• Bacterial Blight → Copper Oxychloride 50 WP @ 3 g/L\n"
-        "Always spray in early morning or evening. Wear protective gear!",
-    ),
-
-    # ── Irrigation / water ────────────────────────────────────────────────────
-    (
-        ["water", "irrigation", "flood", "drain", "waterlog"],
-        "💧 **Water management tips:**\n"
-        "• Transplanting to tillering: maintain 5 cm standing water\n"
-        "• Mid-tillering: drain for 7 days (weed control)\n"
-        "• Panicle initiation to flowering: 5 cm water critical\n"
-        "• After flowering: Alternate Wetting & Drying (AWD) saves 30% water!",
-    ),
-
-    # ── Weather ───────────────────────────────────────────────────────────────
-    (
-        ["weather", "rain", "temperature", "humidity", "climate"],
-        "🌤️ Weather greatly affects rice diseases:\n"
-        "• High humidity (>80%) + cool nights → Blast risk ↑\n"
-        "• Heavy rains → Bacterial Blight spreads via water\n"
-        "• High temp (>35°C) → Heat stress, increase irrigation\n"
-        "Check the Weather Advisory section for today's conditions!",
-    ),
-
-    # ── General farming ───────────────────────────────────────────────────────
-    (
-        ["planting", "transplant", "seedling", "sowing", "nursery"],
-        "🌱 **Planting tips:**\n"
-        "• Nursery: sow 25–30 kg seed/ha; treat seeds before sowing\n"
-        "• Transplant at 25–30 days old seedlings\n"
-        "• Spacing: 20×15 cm (2–3 seedlings per hill)\n"
-        "• Avoid late planting — synchronise with your region's kharif calendar.",
-    ),
-    (
-        ["harvest", "yield", "cutting", "maturity"],
-        "🌾 **Harvest tips:**\n"
-        "• Harvest when 80–85% of grains turn golden yellow\n"
-        "• Grain moisture should be 20–25% at harvest\n"
-        "• Avoid cutting in morning dew — grain shattering increases\n"
-        "• Yield: 4–6 tonnes/ha for irrigated rice under good management.",
-    ),
-    (
-        ["variety", "seed", "resistant"],
-        "🌾 **Recommended resistant varieties:**\n"
-        "• Blast-resistant: IR64, Samba Mahsuri, MTU 1010\n"
-        "• Blight-resistant: Swarna Sub1, IR20, BPT 5204\n"
-        "• High-yield: IR36, ADT 43, DRR Dhan 42\n"
-        "Ask your local KVK (Krishi Vigyan Kendra) for region-specific advice.",
-    ),
-    (
-        ["weed", "grass", "weed control"],
-        "🌿 **Weed management:**\n"
-        "• Apply pre-emergence herbicide (Butachlor) within 3 days of transplanting\n"
-        "• Manual weeding at 20 and 40 days after transplanting\n"
-        "• A clean field in the first 40 days prevents 30–40% yield loss.",
-    ),
-
-    # ── Help / greeting ───────────────────────────────────────────────────────
-    (
-        ["hello", "hi", "hey", "namaste", "good morning", "good evening"],
-        "👋 Hello, Farmer! I'm your Rice Crop Assistant.\n\n"
-        "I can help you with:\n"
-        "🍃 Disease identification\n"
-        "🌾 Fertiliser advice\n"
-        "🧪 Pesticide guidance\n"
-        "💧 Irrigation tips\n"
-        "🌤️ Weather impact\n"
-        "🌱 Planting & harvesting\n\n"
-        "Just type your question in simple words!",
-    ),
-    (
-        ["thank", "thanks", "dhanyawad", "shukriya"],
-        "😊 You're welcome! Happy farming! 🌾\n"
-        "Feel free to ask anything else about your rice crop.",
-    ),
-    (
-        ["help", "what can you do", "capabilities"],
-        "🤖 I can answer questions about:\n"
-        "• Rice diseases (Blast, Brown Spot, Bacterial Blight)\n"
-        "• Fertiliser and nutrient management\n"
-        "• Pesticide application\n"
-        "• Irrigation and water management\n"
-        "• Seed varieties and planting\n"
-        "• Weather impact on crops\n\n"
-        "Type a question in simple English and I'll help!",
-    ),
-]
-
-_DEFAULT_RESPONSE = (
-    "🤔 I'm not sure about that. Try asking about:\n"
-    "• Rice diseases (blast, brown spot, blight)\n"
-    "• Fertiliser or nutrients\n"
-    "• Irrigation or water management\n"
-    "• Pesticide sprays\n"
-    "• Planting or harvesting tips\n\n"
-    "Or upload a crop photo for instant disease analysis! 📸"
+_SYSTEM_PROMPT = (
+    "You are CropSense AI, a rice-farming assistant. "
+    "Always respond with exactly 4 sections: Diagnosis, Why, Actions, Cautions. "
+    "Use concise bullet points. "
+    "Never provide dangerous, illegal, or unsafe instructions. "
+    "Do not invent certainty: if unclear, state uncertainty and request one key clarification. "
+    "If app context indicates low confidence/uncertain prediction, prioritize retake-image guidance. "
+    "Keep advice practical for field use and mention label/local-extension compliance for chemical use."
 )
 
+_KB = {
+    "leaf blast": {
+        "why": "Often associated with fungal pressure, high humidity, and excess nitrogen.",
+        "actions": [
+            "Remove infected leaves and infected residue.",
+            "Reduce nitrogen temporarily and rebalance nutrition.",
+            "Improve spacing and airflow to reduce leaf wetness.",
+            "Use locally approved fungicide schedule as per label guidance.",
+        ],
+        "caution": "Avoid spraying in strong heat, high wind, or just before rain.",
+    },
+    "brown spot": {
+        "why": "Linked to nutrient stress and prolonged leaf wetness.",
+        "actions": [
+            "Correct potassium and phosphorus deficiencies.",
+            "Keep irrigation stable and avoid moisture stress.",
+            "Use recommended fungicide only if needed by local guidance.",
+        ],
+        "caution": "Avoid repeated non-target fungicide use without diagnosis confirmation.",
+    },
+    "bacterial blight": {
+        "why": "Can spread via water splash, tools, and humid conditions.",
+        "actions": [
+            "Reduce nitrogen and avoid over-irrigation.",
+            "Improve drainage and reduce standing water.",
+            "Sanitize tools and avoid handling wet foliage.",
+            "Follow approved bactericide schedule if recommended locally.",
+        ],
+        "caution": "Do not rely on random pesticide combinations.",
+    },
+}
 
-# ── Matching engine ───────────────────────────────────────────────────────────
+_DEFAULT = (
+    "Diagnosis:\n"
+    "- Please share disease name or upload analysis result for precise support.\n"
+    "Why:\n"
+    "- Treatment varies by disease type, crop stage, and weather conditions.\n"
+    "Actions:\n"
+    "- Provide location, key symptoms, and severity for tailored guidance.\n"
+    "Cautions:\n"
+    "- Avoid unsupervised pesticide mixing; follow label and local extension advice."
+)
+
+_UNSAFE_HINTS = [
+    "poison", "harm", "kill", "illegal", "bomb", "weapon", "suicide", "self harm",
+]
+
+
 def _tokenise(text: str) -> str:
-    """Lower-case and strip punctuation."""
     return re.sub(r"[^\w\s]", " ", text.lower())
 
 
-def get_response(user_message: str) -> str:
-    """
-    Return the best matching chatbot response for a user message.
+def _is_unsafe_query(message: str) -> bool:
+    t = _tokenise(message)
+    return any(h in t for h in _UNSAFE_HINTS)
 
-    Parameters
-    ----------
-    user_message : raw user input string
 
-    Returns
-    -------
-    Markdown-formatted response string
-    """
-    clean = _tokenise(user_message)
+def _context_to_text(context: dict[str, Any] | None) -> str:
+    if not context:
+        return "No app context available."
+    safe = {
+        "latest_prediction": context.get("latest_prediction"),
+        "latest_weather": context.get("latest_weather"),
+        "recent_chat": context.get("recent_chat", [])[-4:],
+    }
+    return json.dumps(safe, ensure_ascii=True)
 
-    best_answer   = _DEFAULT_RESPONSE
-    best_matches  = 0
 
-    for keywords, answer in _KB:
-        matches = sum(1 for kw in keywords if kw in clean)
-        if matches > best_matches:
-            best_matches = matches
-            best_answer  = answer
+def _format_safe_refusal() -> str:
+    return (
+        "Diagnosis:\n- I cannot help with harmful or unsafe requests.\n"
+        "Why:\n- This assistant supports safe agricultural guidance only.\n"
+        "Actions:\n- Ask crop-disease, fertilizer, irrigation, or weather-risk questions.\n"
+        "Cautions:\n- For emergencies, contact local emergency or health services immediately."
+    )
 
-    return best_answer
+
+def _rule_reply(message: str, context: dict[str, Any] | None = None) -> str:
+    if _is_unsafe_query(message):
+        return _format_safe_refusal()
+
+    txt = _tokenise(message)
+    picked = None
+
+    for k in _KB:
+        if k in txt:
+            picked = k
+            break
+
+    if not picked and context:
+        pred = (context.get("latest_prediction") or {}).get("disease", "").lower()
+        for k in _KB:
+            if k in pred:
+                picked = k
+                break
+
+    if not picked:
+        return _DEFAULT
+
+    item = _KB[picked]
+    action_lines = "\n".join([f"- {x}" for x in item["actions"]])
+
+    weather_note = ""
+    w = (context or {}).get("latest_weather")
+    if isinstance(w, dict):
+        hum = w.get("humidity")
+        desc = w.get("description")
+        if isinstance(hum, (int, float)):
+            weather_note += (
+                f"\n- Current humidity {hum}% may increase disease pressure."
+                if hum >= 80
+                else f"\n- Current humidity {hum}% is moderate."
+            )
+        if desc:
+            weather_note += f"\n- Weather condition: {desc}."
+
+    pred = (context or {}).get("latest_prediction") or {}
+    if pred and (pred.get("confidence", 1) < 0.6 or pred.get("needs_retake")):
+        retake_note = "\n- App prediction confidence is low. Retake a clear close-up leaf image before treatment decision."
+    else:
+        retake_note = ""
+
+    return (
+        f"Diagnosis:\n- Likely concern: {picked.title()}.{retake_note}\n"
+        f"Why:\n- {item['why']}{weather_note}\n"
+        f"Actions:\n{action_lines}\n"
+        f"Cautions:\n- {item['caution']}"
+    )
+
+
+def _openai_reply(message: str, context: dict[str, Any] | None = None) -> str | None:
+    if _is_unsafe_query(message):
+        return _format_safe_refusal()
+
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    context_text = _context_to_text(context)
+    user_prompt = (
+        f"User question: {message}\n\n"
+        f"App context: {context_text}\n\n"
+        "Output strictly in 4 sections: Diagnosis, Why, Actions, Cautions. "
+        "Use short bullets and practical steps."
+    )
+
+    payload = {
+        "model": _DEFAULT_MODEL,
+        "input": [
+            {"role": "system", "content": [{"type": "input_text", "text": _SYSTEM_PROMPT}]},
+            {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
+        ],
+    }
+
+    try:
+        resp = requests.post(
+            _OPENAI_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = (data.get("output_text") or "").strip()
+        if text:
+            return text
+
+        for item in data.get("output", []):
+            for c in item.get("content", []):
+                if c.get("type") == "output_text" and c.get("text"):
+                    return str(c["text"]).strip()
+    except Exception:
+        return None
+
+    return None
+
+
+def get_response(user_message: str, context: dict[str, Any] | None = None) -> str:
+    live = _openai_reply(user_message, context=context)
+    if live:
+        return live
+    return _rule_reply(user_message, context=context)

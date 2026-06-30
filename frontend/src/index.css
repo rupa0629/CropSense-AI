@@ -1,0 +1,65 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: Inter, Segoe UI, Arial, sans-serif;
+  line-height: 1.5;
+  color: #0f172a;
+  background-color: #f8fafc;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.dark body {
+  background: #020617;
+  color: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(16, 185, 129, 0.18);
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-3xl border border-slate-200/70 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/75;
+  }
+  .section-title {
+    @apply text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400;
+  }
+  .status-pill {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+  .status-pill.mild {
+    @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200;
+  }
+  .status-pill.moderate {
+    @apply bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200;
+  }
+  .status-pill.severe {
+    @apply bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200;
+  }
+  .upload-box {
+    @apply rounded-3xl border-2 border-dashed border-slate-300/90 bg-slate-50/80 p-8 text-center transition-colors duration-200 hover:border-emerald-400 hover:bg-emerald-50 dark:border-slate-700/90 dark:bg-slate-950/40;
+  }
+}

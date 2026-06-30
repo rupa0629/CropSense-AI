@@ -1,3 +1,226 @@
+# CropSense AI
+
+CropSense AI is an industrial‑style crop disease detection and advisory platform for rice. It provides an async FastAPI backend running a TensorFlow model for leaf-image analysis, a modern React + Vite frontend dashboard, observability (Prometheus metrics, request logging), and containerized deployment support via Docker and docker-compose.
+
+---
+
+## Features
+
+- End‑to‑end image-based disease detection (model inference pipeline)
+- Web dashboard for uploads, history, weather checks, and AI assistant
+- Asynchronous, one‑time model initialization (fast warm start)
+- Request, error and prediction logging
+- Prometheus metrics exposed at `/metrics`
+- Liveness and readiness probes: `/health/live` and `/health/ready`
+- Dockerized frontend and backend for repeatable deployments
+- Test scaffolding with `pytest` (backend) and `vitest` (frontend)
+
+---
+
+## Architecture Overview
+
+- Frontend: React + Vite (Tailwind CSS used for styling)
+- Backend: FastAPI + Uvicorn, organized into routers, services and utils
+- Model: TensorFlow (CPU by default; configurable for GPU)
+- Observability: console logs + Prometheus metrics
+- Persistence / auth: small SQLite-based auth DB utilities (in `utils/auth_db.py`)
+- Containerization: multi-stage Docker builds for frontend and backend; `docker-compose.yml` orchestrates services
+
+Architecture diagram (suggested):
+
+```mermaid
+graph LR
+  A[User Browser] -->|HTTPS| B(Nginx / Frontend)
+  B --> C(Backend API - FastAPI)
+  C --> D(Model Service - TensorFlow)
+  C --> E(Auth DB / Logs)
+  C --> F(Prometheus)
+```
+
+---
+
+## Screenshots
+
+Place screenshots in `frontend/public/` and reference them here. Example:
+
+- `docs/screenshots/dashboard.png` — Dashboard view (upload, results, history)
+- `docs/screenshots/results.png` — Prediction details and recommendations
+
+> Note: add real screenshots to the `docs/screenshots/` folder and update paths below.
+
+---
+
+## Quickstart — Local (Development)
+
+Prerequisites
+
+- Python 3.10+ (or the project's chosen runtime)
+- Node 18+ / npm (for frontend) or use Docker for full isolation
+- (Optional) Docker & docker-compose for containerized runs
+
+Python backend
+
+1. Create virtual environment and install Python deps:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate      # Linux/macOS
+.venv\Scripts\Activate.ps1    # Windows PowerShell
+python -m pip install -r requirements.txt
+```
+
+2. Copy and configure environment variables (examples):
+
+```ini
+# .env (example)
+JWT_SECRET=replace-me
+MODEL_PATH=models/rice_disease_model.h5
+MODEL_USE_GPU=false
+DATABASE_URL=sqlite:///./data/auth.db
+```
+
+3. Start backend (development):
+
+```bash
+uvicorn api_server:app --reload --host 0.0.0.0 --port 8000
+```
+
+Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open the UI at `http://localhost:5173` (Vite default) and backend at `http://localhost:8000`.
+
+---
+
+## Docker (recommended for staging/prod testing)
+
+Build and run both services with `docker-compose` (already included in repository):
+
+```bash
+docker-compose build
+docker-compose up -d
+```
+
+Verify:
+
+```bash
+curl http://localhost:8000/health
+curl -I http://localhost:8000/health/ready
+curl http://localhost:8000/metrics | head -n 20
+```
+
+Notes:
+- The frontend Dockerfile runs a Vite build and serves `dist` via nginx. Ensure `npm ci` and `npm run build` succeed in the builder stage.
+- If you want GPU acceleration for TensorFlow, build a backend image with a compatible `tensorflow` GPU base image and ensure host NVIDIA runtime is configured.
+
+---
+
+## API Endpoints
+
+Public health & metrics
+
+- `GET /health` — basic service health
+- `GET /health/live` — liveness probe
+- `GET /health/ready` — readiness probe (checks model warm status)
+- `GET /metrics` — Prometheus metrics exposition
+
+Authentication (token-based; see `routers/auth.py`)
+
+- `POST /auth/login` — login and receive token
+- `POST /auth/register` — create user
+
+Application endpoints (require auth)
+
+- `POST /predict` — Upload an image file (multipart) and run prediction. Returns `disease`, `confidence`, `severity`, and `fertilizer` recommendation.
+- `POST /weather` — Fetch weather advisory and optionally save user settings.
+- `POST /chat` — Chat with the AI assistant.
+- `GET /dashboard` — User dashboard counts and recent items.
+- `GET /history` — Paginated analysis history.
+- `GET /admin/overview` — Admin overview (admin only)
+- `GET /admin/users` — List users (admin only)
+
+Refer to `routers/` for detailed request schemas and dependencies.
+
+---
+
+## Testing
+
+Backend (Pytest)
+
+```bash
+python -m pip install -r requirements.txt
+pytest -q
+```
+
+Frontend (Vitest)
+
+```bash
+cd frontend
+npm ci
+npm run test
+```
+
+Notes: tests include unit and integration scaffolding. Some tests monkeypatch TensorFlow/model behavior so they run quickly without GPU.
+
+---
+
+## Future Improvements
+
+- Add CI pipeline (GitHub Actions) to run tests, lint, and build images on PRs.
+- Add production-grade logging sink (structured JSON logs, log shipping to ELK/Datadog)
+- Add automated vulnerability scanning and image signing for container images.
+- Add rate-limited and authenticated /metrics access, or position metrics behind the monitoring network.
+- Expand model evaluation tests and performance benchmarks; add test data and reproducible evaluation scripts.
+- Provide Helm charts / Kubernetes manifests for production deployments.
+
+---
+
+## Tech Stack
+
+- Backend: Python, FastAPI, Uvicorn
+- ML: TensorFlow / Keras, Pillow, NumPy
+- Frontend: React, Vite, Tailwind CSS
+- Observability: Prometheus (via `prometheus_client`), structured Python logging
+- Containers: Docker, nginx for static frontend
+- Tests: pytest, pytest-asyncio, vitest, Testing Library
+
+---
+
+## Contributing
+
+We welcome contributions. Please follow these guidelines:
+
+1. Fork the repo and create a feature branch: `git checkout -b feat/your-feature`
+2. Run tests locally and ensure they pass.
+3. Follow code style and add tests for new behaviour.
+4. Open a Pull Request with a clear description and link to any related issue.
+
+Helpful checks (example):
+
+```bash
+# run backend tests
+pytest
+
+# run frontend tests
+cd frontend && npm run test
+```
+
+If you want, open an issue first to discuss larger changes.
+
+---
+
+## Contact & Support
+
+If you need help setting up production deployments, CI integration, or model optimization (GPU tuning, batching, TTA), open an issue or contact the maintainers via GitHub.
+
+---
+
+Thank you for using CropSense AI — built to make crop diagnostics accessible, fast, and production‑ready.
 # 🌾 Smart Rice Crop Monitoring & Advisory System
 
 > AI-powered rice disease detection, severity analysis, weather advisory,
@@ -84,6 +307,33 @@ streamlit run app.py
 ```
 
 The app opens automatically at **http://localhost:8501** in your browser.
+
+---
+
+## 🚀 Docker Deployment
+
+The project includes container support for both backend and frontend.
+
+- Backend API: `Dockerfile`
+- Frontend SPA: `frontend/Dockerfile`
+- Local compose orchestration: `docker-compose.yml`
+
+Run locally with:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+- Backend: `http://localhost:8000`
+- Frontend: `http://localhost:4173`
+
+If you use the frontend source directly, copy `.env.example` to `.env` and adjust the API URL:
+
+```env
+VITE_API_BASE=http://127.0.0.1:8000
+```
 
 ---
 

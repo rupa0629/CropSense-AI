@@ -1,13 +1,21 @@
-# ── Core UI ──────────────────────────────────────────────────────────────────
-streamlit>=1.32.0
+# Runtime dependencies validated by the production container build on 2026-06-30.
+streamlit==1.58.0
+tensorflow-cpu==2.21.0
+Pillow==12.2.0
+numpy==2.5.0
+requests==2.34.2
+pandas==3.0.3
+fastapi==0.138.2
+uvicorn==0.49.0
+python-jose[cryptography]==3.5.0
+python-multipart==0.0.32
+email-validator==2.3.0
+prometheus-client==0.25.0
+pydantic-settings==2.14.2
+redis==8.0.1
 
-# ── Deep learning (MobileNetV2) ───────────────────────────────────────────────
-# TensorFlow CPU-only (smaller, works on most machines)
-tensorflow-cpu>=2.15.0
-
-# ── Image processing ──────────────────────────────────────────────────────────
-Pillow>=10.0.0
-numpy>=1.24.0
-
-# ── Weather API ───────────────────────────────────────────────────────────────
-requests>=2.31.0
+# Test dependencies.
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1
+pytest-cov==7.1.0

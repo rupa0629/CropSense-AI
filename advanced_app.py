@@ -96,8 +96,9 @@ if not st.session_state.auth_user:
     st.stop()
 
 with st.sidebar:
-    st.markdown(f"### User: {st.session_state.auth_user['full_name']}")
-    st.caption(st.session_state.auth_user["email"])
+    if st.session_state.auth_user:
+        st.markdown(f"### User: {st.session_state.auth_user['full_name']}")
+        st.caption(st.session_state.auth_user["email"])
     if st.button("Logout", use_container_width=True):
         st.session_state.auth_user = None
         st.rerun()
