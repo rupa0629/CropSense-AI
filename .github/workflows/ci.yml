@@ -11,6 +11,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-only-jwt-secret-not-used-outside-github-actions
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t cropsense-backend:${{ github.sha }} .
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cropsense-backend:${{ github.sha }}
           format: table
@@ -44,7 +46,7 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
       - run: docker build -t cropsense-frontend:${{ github.sha }} frontend
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cropsense-frontend:${{ github.sha }}
           format: table
