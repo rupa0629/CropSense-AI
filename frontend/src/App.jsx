@@ -265,7 +265,7 @@ function AuthScreen({ onAuth }) {
           <div className="rounded-[2rem] border border-slate-200/80 bg-slate-50 p-6 dark:border-slate-700/80 dark:bg-slate-950/70">
             <div className="flex gap-2 rounded-full bg-slate-200/60 p-1 text-sm font-medium text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
               {['login', 'register', 'reset'].map((item) => (
-                <button key={item} className={`flex-1 rounded-full px-3 py-2 ${tab === item ? 'bg-white shadow dark:bg-slate-900' : 'bg-transparent'}`} onClick={() => { setTab(item); setMsg(''); }}>
+                <button key={item} className={`auth-tab flex-1 rounded-full px-3 py-2 ${tab === item ? 'active' : ''}`} onClick={() => { setTab(item); setMsg(''); }}>
                   {item === 'login' ? 'Login' : item === 'register' ? 'Register' : 'Reset'}
                 </button>
               ))}

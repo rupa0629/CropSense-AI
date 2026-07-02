@@ -257,22 +257,30 @@ input {
 }
 
 .btn,
-button {
+.btn-ghost,
+.btn-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: none;
   border-radius: 14px;
   padding: 14px 18px;
-  background: linear-gradient(135deg, #108455, #2cbf7f);
-  color: #ffffff;
+  min-height: 48px;
   font-weight: 700;
   cursor: pointer;
+  opacity: 1;
+  visibility: visible;
   transition: transform .15s ease, background .15s ease;
 }
 
+.btn {
+  border: none;
+  background: linear-gradient(135deg, #108455, #2cbf7f);
+  color: #ffffff;
+}
+
 .btn:hover,
-button:hover {
+.btn-ghost:hover,
+.btn-secondary:hover {
   transform: translateY(-1px);
 }
 
@@ -288,9 +296,43 @@ button:hover {
 }
 
 .btn:disabled,
-button:disabled {
+.btn-ghost:disabled,
+.btn-secondary:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.auth-tab {
+  min-height: 44px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #334155;
+  font-weight: 700;
+  opacity: 1;
+  visibility: visible;
+}
+
+.auth-tab:hover {
+  background: rgba(255, 255, 255, 0.7);
+  color: #065f46;
+}
+
+.auth-tab.active {
+  border-color: #a7f3d0;
+  background: #ffffff;
+  color: #065f46;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+.dark .auth-tab {
+  color: #cbd5e1;
+}
+
+.dark .auth-tab:hover,
+.dark .auth-tab.active {
+  border-color: #047857;
+  background: #0f172a;
+  color: #a7f3d0;
 }
 
 .alert-banner {
