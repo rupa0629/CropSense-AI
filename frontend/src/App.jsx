@@ -116,13 +116,18 @@ function App() {
     }
   };
 
-  const runWeather = async (location) => {
+  const runWeather = async (locationOrCoordinates) => {
     try {
-      const data = await fetchWeather({ location, save_settings: true });
+      const payload = typeof locationOrCoordinates === "string"
+        ? { location: locationOrCoordinates }
+        : locationOrCoordinates;
+      const data = await fetchWeather({ ...payload, save_settings: true });
       setWeather(data.weather);
       await refreshAll();
+      return true;
     } catch (error) {
       alert(error.message || "Weather lookup failed.");
+      return false;
     }
   };
 
@@ -554,6 +559,39 @@ function SummaryRow({ label, value }) {
 
 function Weather({ onFetch, weather }) {
   const [location, setLocation] = useState("Delhi,IN");
+  const [locationStatus, setLocationStatus] = useState("");
+
+  const fetchCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus("Location services are not supported by this browser.");
+      return;
+    }
+
+    setLocationStatus("Getting your current location...");
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        try {
+          const loaded = await onFetch({
+            location: "Current location",
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          });
+          setLocationStatus(loaded
+            ? "Live weather loaded for your current location."
+            : "Unable to load weather for your current location.");
+        } catch {
+          setLocationStatus("Unable to load weather for your current location.");
+        }
+      },
+      (error) => {
+        const denied = error.code === error.PERMISSION_DENIED;
+        setLocationStatus(denied
+          ? "Location permission was denied. Allow it in your browser or enter a city."
+          : "Could not detect your location. Enter a city instead.");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 },
+    );
+  };
 
   return (
     <section className="grid gap-6 xl:grid-cols-[1.45fr_0.75fr]">
@@ -566,10 +604,12 @@ function Weather({ onFetch, weather }) {
           <span className="status-pill mild">Real-time</span>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-[1.8fr_1fr]">
+        <div className="mt-8 grid gap-4 sm:grid-cols-[1.8fr_1fr_1fr]">
           <input className="field" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City,Country code" />
           <button className="btn w-full" onClick={() => onFetch(location)}>Fetch weather</button>
+          <button className="btn-secondary w-full" onClick={fetchCurrentLocation}>Use my location</button>
         </div>
+        {locationStatus && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{locationStatus}</p>}
 
         {weather && (
           <div className="weather-grid mt-8 grid gap-4 sm:grid-cols-2">

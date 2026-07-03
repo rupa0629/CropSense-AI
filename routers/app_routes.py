@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 class WeatherPayload(BaseModel):
     location: str = Field(default="Delhi,IN", min_length=3, max_length=100)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     api_key: str | None = None
     save_settings: bool = False
 
@@ -93,7 +95,12 @@ def weather(payload: WeatherPayload, user: dict = Depends(current_user)):
     api_key = payload.api_key or None
     save_settings = payload.save_settings
 
-    w = get_weather_advisory(location=location, api_key=api_key)
+    w = get_weather_advisory(
+        location=location,
+        api_key=api_key,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+    )
     uid = int(user["id"])
 
     if save_settings:

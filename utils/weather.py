@@ -76,7 +76,12 @@ def _mock_weather(location: str) -> dict:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
-def get_weather_advisory(location: str = _DEFAULT_LOC, api_key: str | None = None) -> dict:
+def get_weather_advisory(
+    location: str = _DEFAULT_LOC,
+    api_key: str | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> dict:
     """
     Fetch weather data and return advisory dict.
 
@@ -101,9 +106,15 @@ def get_weather_advisory(location: str = _DEFAULT_LOC, api_key: str | None = Non
         return data
 
     try:
+        coordinates_supplied = latitude is not None and longitude is not None
+        query = (
+            {"lat": latitude, "lon": longitude}
+            if coordinates_supplied
+            else {"q": location}
+        )
         resp = requests.get(
             _API_BASE,
-            params={"q": location, "appid": key, "units": "metric"},
+            params={**query, "appid": key, "units": "metric"},
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
