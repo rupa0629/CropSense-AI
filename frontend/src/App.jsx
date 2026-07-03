@@ -14,6 +14,7 @@ import {
   registerUser,
   resetPassword,
 } from "./api";
+import "./App.css";
 
 const navBase = ["Dashboard", "Upload", "Results", "Weather", "Chatbot", "Summary"];
 
