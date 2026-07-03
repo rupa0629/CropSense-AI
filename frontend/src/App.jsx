@@ -412,13 +412,23 @@ function UploadCard({ uploadFile, setUploadFile, onPredict, isPredicting }) {
           <span className="status-pill mild">Fast inference</span>
         </div>
 
-        <div className="upload-box mt-8" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-          <div className="space-y-3">
-            <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Drag and drop an image</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">PNG, JPG, or WEBP. Max file size handled by backend limits.</p>
-          </div>
-          <input type="file" accept="image/*" className="mt-6 h-0 w-0 opacity-0" onChange={(e) => handleFile(e.target.files?.[0])} />
-        </div>
+        <label
+          className="upload-box mt-8"
+          htmlFor="crop-image-upload"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDrop}
+        >
+          <span className="upload-title">Drag and drop an image</span>
+          <span className="upload-hint">or click here to choose a PNG, JPG, or WEBP file</span>
+          {uploadFile && <span className="upload-filename">Selected: {uploadFile.name}</span>}
+        </label>
+        <input
+          id="crop-image-upload"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="visually-hidden"
+          onChange={(event) => handleFile(event.target.files?.[0])}
+        />
 
         {uploadPreview ? (
           <img className="mt-8 w-full rounded-[1.75rem] border border-slate-200/80 object-cover dark:border-slate-700/80" src={uploadPreview} alt="Preview" />
