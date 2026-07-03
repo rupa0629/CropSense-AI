@@ -459,7 +459,7 @@ function UploadCard({ uploadFile, setUploadFile, onPredict, isPredicting }) {
   );
 }
 
-function Results({ result }) {
+export function Results({ result }) {
   if (!result) {
     return (
       <section className="glass-card p-8">
@@ -468,8 +468,27 @@ function Results({ result }) {
     );
   }
 
-  const confidence = Math.round((result.confidence || 0) * 100);
-  const severityLevel = result.severity?.level || "Mild";
+  // The API returns model details inside `disease`; keep compatibility with
+  // older flat responses so a prediction can never crash the whole dashboard.
+  const diseaseResult = typeof result.disease === "object" && result.disease !== null
+    ? result.disease
+    : result;
+  const diseaseName = typeof diseaseResult.disease === "string"
+    ? diseaseResult.disease
+    : "Unknown issue";
+  const rawConfidence = Number(diseaseResult.confidence);
+  const confidence = Number.isFinite(rawConfidence)
+    ? Math.max(0, Math.min(100, Math.round(rawConfidence * 100)))
+    : 0;
+  const severityLevel = typeof result.severity === "string"
+    ? result.severity
+    : result.severity?.level || "Mild";
+  const severityAdvice = typeof result.severity === "object"
+    ? result.severity?.advice
+    : "";
+  const recommendations = Array.isArray(result.fertilizer?.fertiliser)
+    ? result.fertilizer.fertiliser
+    : [];
 
   return (
     <section className="grid gap-6 xl:grid-cols-[1.4fr_0.7fr]">
@@ -477,7 +496,7 @@ function Results({ result }) {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="section-title">Analysis result</p>
-            <h3 className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">{result.disease || "Unknown issue"}</h3>
+            <h3 className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">{diseaseName}</h3>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Based on your uploaded photo and the AI model score.</p>
           </div>
           <span className={`status-pill ${severityLevel.toLowerCase()}`}>{severityLevel}</span>
@@ -497,13 +516,13 @@ function Results({ result }) {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-[1.75rem] bg-slate-50 p-6 dark:bg-slate-950/60">
               <h4 className="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Severity guidance</h4>
-              <p className="mt-4 text-slate-700 dark:text-slate-200">{result.severity?.advice || "Retake the photo for a clearer diagnosis if needed."}</p>
+              <p className="mt-4 text-slate-700 dark:text-slate-200">{severityAdvice || "Retake the photo for a clearer diagnosis if needed."}</p>
             </div>
             <div className="rounded-[1.75rem] bg-slate-50 p-6 dark:bg-slate-950/60">
               <h4 className="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Recommended actions</h4>
               <div className="mt-4 space-y-3">
-                {(result.fertilizer?.fertiliser || []).map((item, index) => (
-                  <div key={index} className="rounded-2xl bg-white/90 p-3 text-sm text-slate-700 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">{item}</div>
+                {recommendations.map((item, index) => (
+                  <div key={index} className="rounded-2xl bg-white/90 p-3 text-sm text-slate-700 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">{String(item)}</div>
                 ))}
               </div>
             </div>
@@ -514,8 +533,8 @@ function Results({ result }) {
       <div className="card p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Prediction summary</h3>
         <div className="mt-6 space-y-4">
-          <SummaryRow label="Disease" value={result.disease || "—"} />
-          <SummaryRow label="Method" value={result.method || "AI model"} />
+          <SummaryRow label="Disease" value={diseaseName} />
+          <SummaryRow label="Method" value={diseaseResult.method || "AI model"} />
           <SummaryRow label="Confidence" value={`${confidence}%`} />
           <SummaryRow label="Severity" value={severityLevel} />
           <SummaryRow label="Action" value={result.fertilizer?.immediate_action || "Review the recommendation."} />
