@@ -534,7 +534,6 @@ export function Results({ result }) {
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Prediction summary</h3>
         <div className="mt-6 space-y-4">
           <SummaryRow label="Disease" value={diseaseName} />
-          <SummaryRow label="Method" value={diseaseResult.method || "AI model"} />
           <SummaryRow label="Confidence" value={`${confidence}%`} />
           <SummaryRow label="Severity" value={severityLevel} />
           <SummaryRow label="Action" value={result.fertilizer?.immediate_action || "Review the recommendation."} />
