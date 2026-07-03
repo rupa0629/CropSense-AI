@@ -532,6 +532,39 @@ input {
   border: 1px solid #e4ece5;
 }
 
+.chat-panel .bubble:not(.user),
+.chat-panel .bubble:not(.user) p,
+.dark .chat-panel .bubble:not(.user),
+.dark .chat-panel .bubble:not(.user) p {
+  background: #ffffff;
+  color: #111827;
+}
+
+.chat-input,
+.dark .chat-input {
+  background: #ffffff;
+  color: #111827;
+}
+
+.chat-input::placeholder,
+.dark .chat-input::placeholder {
+  color: #4b5563;
+  opacity: 1;
+}
+
+.quick-prompts,
+.quick-prompts h3,
+.dark .quick-prompts,
+.dark .quick-prompts h3 {
+  color: #111827;
+}
+
+.quick-prompts .btn-ghost,
+.dark .quick-prompts .btn-ghost {
+  background: #ffffff;
+  color: #111827;
+}
+
 .chat-input-row {
   display: grid;
   grid-template-columns: 1fr auto;

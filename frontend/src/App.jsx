@@ -655,7 +655,7 @@ function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend }) {
           <span className="status-pill mild">Interactive</span>
         </div>
 
-        <div className="chat-box mt-6 flex-1 overflow-y-auto rounded-[1.75rem] border border-slate-200/80 bg-slate-50 p-6 dark:border-slate-700/80 dark:bg-slate-950/50">
+        <div className="chat-box chat-panel mt-6 flex-1 overflow-y-auto rounded-[1.75rem] border border-slate-200/80 bg-slate-50 p-6 dark:border-slate-700/80 dark:bg-slate-950/50">
           {messages.map((message, index) => (
             <div key={index} className={`bubble ${message.role} mb-4 max-w-[85%] rounded-3xl px-5 py-4 ${message.role === 'user' ? 'ml-auto bg-emerald-500 text-white' : 'bg-white text-slate-800 shadow dark:bg-slate-900/80 dark:text-slate-100'}`}>
               <p>{message.text}</p>
@@ -664,12 +664,12 @@ function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend }) {
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto]">
-          <input className="field" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a question" />
+          <input className="field chat-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a question" />
           <button className="btn w-full sm:w-auto" onClick={onSend}>Send</button>
         </div>
       </div>
 
-      <div className="card p-8">
+      <div className="card quick-prompts p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Quick prompts</h3>
         <div className="mt-5 grid gap-3">
           {quickPrompts.map((prompt) => (
