@@ -558,7 +558,6 @@ function SummaryRow({ label, value }) {
 }
 
 function Weather({ onFetch, weather }) {
-  const [location, setLocation] = useState("Delhi,IN");
   const [locationStatus, setLocationStatus] = useState("");
 
   const fetchCurrentLocation = () => {
@@ -604,9 +603,10 @@ function Weather({ onFetch, weather }) {
           <span className="status-pill mild">Real-time</span>
         </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-[1.8fr_1fr_1fr]">
-          <input className="field" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City,Country code" />
-          <button className="btn w-full" onClick={() => onFetch(location)}>Fetch weather</button>
+        <div className="mt-8 grid items-center gap-4 sm:grid-cols-[1.8fr_1fr]">
+          <div className="field flex items-center font-semibold text-slate-900">
+            {weather?.location || "Location not detected yet"}
+          </div>
           <button className="btn-secondary w-full" onClick={fetchCurrentLocation}>Use my location</button>
         </div>
         {locationStatus && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{locationStatus}</p>}
