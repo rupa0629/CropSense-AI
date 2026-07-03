@@ -629,7 +629,7 @@ function Weather({ onFetch, weather }) {
         )}
       </div>
 
-      <div className="card p-8">
+      <div className="card weather-guidance p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Weather guidance</h3>
         <p className="mt-4 text-slate-600 dark:text-slate-300">Weather awareness can help reduce crop stress and guide treatment timing.</p>
       </div>

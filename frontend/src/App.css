@@ -428,6 +428,23 @@ input {
   color: #6ee7b7;
 }
 
+.weather-card,
+.weather-card h4,
+.weather-card p,
+.weather-card li,
+.weather-guidance,
+.weather-guidance h3,
+.weather-guidance p,
+.dark .weather-card,
+.dark .weather-card h4,
+.dark .weather-card p,
+.dark .weather-card li,
+.dark .weather-guidance,
+.dark .weather-guidance h3,
+.dark .weather-guidance p {
+  color: #111827;
+}
+
 .preview-image {
   width: 100%;
   border-radius: 18px;
