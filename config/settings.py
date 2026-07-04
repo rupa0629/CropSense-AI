@@ -30,12 +30,17 @@ class Settings(BaseSettings):
     model_cpu_intra_threads: int = 2
     model_gpu_memory_limit_mb: int | None = None
     metrics_token: str | None = None
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = 0.1
     allow_heuristic_fallbacks: bool = False
 
     # Database configuration
     database_url: str = "sqlite:///cropsense.db"
     database_pool_size: int = 5
     database_max_overflow: int = 10
+    analysis_retention_days: int = 730
+    weather_retention_days: int = 365
+    chat_retention_days: int = 90
 
     # Email configuration for password reset
     smtp_host: str | None = None
@@ -82,10 +87,10 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     def validate_database_url(cls, value: str, info):
-        if not value.startswith("sqlite:///"):
+        if not value.startswith(("sqlite:///", "postgresql://", "postgres://")):
             raise ValueError(
-                "Only sqlite:/// DATABASE_URL values are currently supported. "
-                "Refusing to silently fall back from PostgreSQL/MySQL."
+                "DATABASE_URL must use sqlite:///, postgresql://, or postgres://. "
+                "Unsupported database URLs never fall back silently."
             )
         return value
 

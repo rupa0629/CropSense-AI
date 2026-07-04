@@ -9,6 +9,7 @@ from utils.auth_db import (
     create_password_reset_token,
     create_refresh_token,
     create_user,
+    delete_user_data,
     get_user_by_email,
     get_user_by_id,
     mark_password_reset_token_used,
@@ -48,6 +49,10 @@ class ForgotPasswordReq(BaseModel):
 class ResetPasswordReq(BaseModel):
     reset_token: str
     new_password: str
+
+
+class DeleteAccountReq(BaseModel):
+    password: str
 
 
 def _create_access_token(payload: dict) -> str:
@@ -126,7 +131,7 @@ def forgot_password(payload: ForgotPasswordReq):
 
     if email_sent:
         return {"ok": True, "message": "Password reset instructions sent to your email."}
-    logger.error("Password reset email could not be sent for %s", payload.email)
+    logger.error("Password reset email could not be sent")
     if settings.environment == "production":
         raise HTTPException(status_code=503, detail="Password reset service is temporarily unavailable")
     return {"ok": True, "message": "Password reset email is unavailable in this environment."}
@@ -150,3 +155,12 @@ def reset_password(payload: ResetPasswordReq):
 @router.get("/me")
 def me(user: dict = Depends(current_user)):
     return {"ok": True, "user": user}
+
+
+@router.delete("/me")
+def delete_my_account(payload: DeleteAccountReq, user: dict = Depends(current_user)):
+    authenticated = authenticate_user(user["email"], payload.password)
+    if not authenticated or int(authenticated["id"]) != int(user["id"]):
+        raise HTTPException(status_code=401, detail="Password confirmation failed")
+    delete_user_data(int(user["id"]))
+    return {"ok": True, "message": "Account and associated personal data deleted"}

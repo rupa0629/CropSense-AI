@@ -7,6 +7,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # SQLite-only development remains supported.
+    psycopg = None
+    dict_row = None
+
 DB_NAME = "cropsense.db"
 
 
@@ -20,12 +27,38 @@ class ClosingConnection(sqlite3.Connection):
             self.close()
 
 
+class PostgresConnection:
+    """Small compatibility wrapper for the existing parameterized SQL calls."""
+
+    def __init__(self, database_url: str):
+        if psycopg is None:
+            raise RuntimeError("PostgreSQL DATABASE_URL requires psycopg")
+        self._connection = psycopg.connect(database_url, row_factory=dict_row)
+
+    def execute(self, sql: str, params: tuple = ()):
+        return self._connection.execute(sql.replace("?", "%s"), params)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._connection.__exit__(exc_type, exc_value, traceback)
+
+
+def _database_url() -> str:
+    from config.settings import get_settings
+
+    return get_settings().database_url
+
+
+def _is_postgres() -> bool:
+    return _database_url().startswith(("postgresql://", "postgres://"))
+
+
 def _db_path() -> Path:
     base_dir = Path(__file__).resolve().parent.parent
 
-    from config.settings import get_settings
-
-    database_url = get_settings().database_url
+    database_url = _database_url()
 
     if database_url.startswith("sqlite:///"):
         raw_path = database_url.removeprefix("sqlite:///")
@@ -40,6 +73,8 @@ def _db_path() -> Path:
 
 
 def get_conn() -> sqlite3.Connection:
+    if _is_postgres():
+        return PostgresConnection(_database_url())
     conn = sqlite3.connect(_db_path(), timeout=30, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -48,12 +83,21 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def _insert_and_get_id(conn, sql: str, params: tuple) -> int:
+    if _is_postgres():
+        row = conn.execute(f"{sql} RETURNING id", params).fetchone()
+        return int(row["id"])
+    cursor = conn.execute(sql, params)
+    return int(cursor.lastrowid)
+
+
 def _hash_password(password: str, salt: str) -> str:
     raw = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120_000)
     return raw.hex()
 
 
 def init_db() -> None:
+    id_column = "BIGSERIAL PRIMARY KEY" if _is_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
     with get_conn() as conn:
         conn.execute(
             """
@@ -66,7 +110,7 @@ def init_db() -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 full_name TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
@@ -74,17 +118,20 @@ def init_db() -> None:
                 role TEXT NOT NULL DEFAULT 'farmer',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
-            "INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)"
+            "INSERT INTO schema_migrations(version) VALUES (1) ON CONFLICT(version) DO NOTHING"
         )
 
         # Backfill older DBs that were created before role column existed.
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'farmer'")
-        except sqlite3.OperationalError:
-            pass
+        if _is_postgres():
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'farmer'")
+        else:
+            try:
+                conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'farmer'")
+            except sqlite3.OperationalError:
+                pass
 
         conn.execute(
             """
@@ -100,7 +147,7 @@ def init_db() -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS analysis_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 user_id INTEGER,
                 image_name TEXT,
                 disease TEXT,
@@ -110,12 +157,12 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS weather_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 user_id INTEGER,
                 location TEXT,
                 temperature REAL,
@@ -126,24 +173,24 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 user_id INTEGER,
                 role TEXT,
                 message TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS refresh_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 user_id INTEGER NOT NULL,
                 token_hash TEXT NOT NULL UNIQUE,
                 expires_at TIMESTAMP NOT NULL,
@@ -152,12 +199,12 @@ def init_db() -> None:
                 revoked_at TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 user_id INTEGER NOT NULL,
                 token_hash TEXT NOT NULL UNIQUE,
                 expires_at TIMESTAMP NOT NULL,
@@ -166,12 +213,12 @@ def init_db() -> None:
                 used_at TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS prediction_feedback (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 analysis_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
                 is_correct INTEGER NOT NULL,
@@ -186,12 +233,12 @@ def init_db() -> None:
                 FOREIGN KEY(user_id) REFERENCES users(id),
                 FOREIGN KEY(reviewed_by) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS agronomist_review_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_column},
                 analysis_id INTEGER NOT NULL UNIQUE,
                 user_id INTEGER NOT NULL,
                 reason TEXT NOT NULL,
@@ -206,7 +253,7 @@ def init_db() -> None:
                 FOREIGN KEY(user_id) REFERENCES users(id),
                 FOREIGN KEY(reviewed_by) REFERENCES users(id)
             )
-            """
+            """.format(id_column=id_column)
         )
 
 
@@ -228,13 +275,19 @@ def create_user(full_name: str, email: str, password: str) -> tuple[bool, str]:
 
     try:
         with get_conn() as conn:
-            cur = conn.execute(
+            user_id = _insert_and_get_id(
+                conn,
                 "INSERT INTO users (full_name, email, password_hash, salt, role) VALUES (?, ?, ?, ?, ?)",
                 (full_name.strip(), email, password_hash, salt, "farmer"),
             )
-            user_id = cur.lastrowid
             conn.execute(
-                "INSERT OR REPLACE INTO user_settings (user_id, weather_api_key, default_location) VALUES (?, ?, ?)",
+                """
+                INSERT INTO user_settings (user_id, weather_api_key, default_location)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    weather_api_key = excluded.weather_api_key,
+                    default_location = excluded.default_location
+                """,
                 (user_id, "", "Delhi,IN"),
             )
 
@@ -244,7 +297,7 @@ def create_user(full_name: str, email: str, password: str) -> tuple[bool, str]:
                 conn.execute("UPDATE users SET role = 'admin' WHERE id = ?", (user_id,))
 
         return True, "Account created successfully."
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, psycopg.IntegrityError if psycopg else sqlite3.IntegrityError):
         return False, "This email is already registered."
 
 
@@ -423,11 +476,11 @@ def get_user_settings(user_id: int) -> dict:
 
 def save_analysis_log(user_id: int, image_name: str, disease: str, confidence: float, severity: str, immediate_action: str) -> int:
     with get_conn() as conn:
-        cursor = conn.execute(
+        return _insert_and_get_id(
+            conn,
             "INSERT INTO analysis_logs (user_id, image_name, disease, confidence, severity, immediate_action) VALUES (?, ?, ?, ?, ?, ?)",
             (user_id, image_name, disease, confidence, severity, immediate_action),
         )
-        return int(cursor.lastrowid)
 
 
 def save_prediction_feedback(
@@ -578,4 +631,63 @@ def list_users(limit: int = 100) -> list[dict]:
         {"id": r["id"], "full_name": r["full_name"], "email": r["email"], "role": r["role"], "created_at": r["created_at"]}
         for r in rows
     ]
+
+
+def delete_user_data(user_id: int) -> None:
+    """Delete an account and all directly associated personal data atomically."""
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM prediction_feedback WHERE user_id = ? OR reviewed_by = ?",
+            (user_id, user_id),
+        )
+        conn.execute(
+            "DELETE FROM agronomist_review_queue WHERE user_id = ? OR reviewed_by = ?",
+            (user_id, user_id),
+        )
+        conn.execute("DELETE FROM refresh_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM chat_logs WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM weather_logs WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM analysis_logs WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+def purge_expired_data(
+    analysis_retention_days: int,
+    weather_retention_days: int,
+    chat_retention_days: int,
+) -> dict[str, int]:
+    """Apply configured retention windows without logging record contents."""
+    now = datetime.now(timezone.utc)
+    cutoffs = {
+        "analysis_logs": (now - timedelta(days=analysis_retention_days)).isoformat(),
+        "weather_logs": (now - timedelta(days=weather_retention_days)).isoformat(),
+        "chat_logs": (now - timedelta(days=chat_retention_days)).isoformat(),
+    }
+    deleted: dict[str, int] = {}
+    with get_conn() as conn:
+        analysis_ids = conn.execute(
+            "SELECT id FROM analysis_logs WHERE created_at < ?",
+            (cutoffs["analysis_logs"],),
+        ).fetchall()
+        ids = [int(row["id"]) for row in analysis_ids]
+        for analysis_id in ids:
+            conn.execute("DELETE FROM prediction_feedback WHERE analysis_id = ?", (analysis_id,))
+            conn.execute("DELETE FROM agronomist_review_queue WHERE analysis_id = ?", (analysis_id,))
+        for table_name, cutoff in cutoffs.items():
+            cursor = conn.execute(
+                f"DELETE FROM {table_name} WHERE created_at < ?",
+                (cutoff,),
+            )
+            deleted[table_name] = max(0, int(cursor.rowcount or 0))
+        conn.execute(
+            "DELETE FROM refresh_tokens WHERE revoked = 1 OR expires_at < ?",
+            (now.isoformat(),),
+        )
+        conn.execute(
+            "DELETE FROM password_reset_tokens WHERE used = 1 OR expires_at < ?",
+            (now.isoformat(),),
+        )
+    return deleted
 

@@ -16,8 +16,15 @@ import {
   submitPredictionFeedback,
 } from "./api";
 import "./App.css";
+import { translator } from "./i18n";
 
 const navBase = ["Dashboard", "Upload", "Results", "Weather", "Chatbot", "Summary"];
+const diseaseSources = {
+  "Leaf Blast": "https://www.knowledgebank.irri.org/training/fact-sheets/pest-management/diseases/item/blast-leaf-collar",
+  "Brown Spot": "https://www.knowledgebank.irri.org/training/fact-sheets/pest-management/diseases",
+  "Bacterial Blight": "https://www.knowledgebank.irri.org/decision-tools/rice-doctor/rice-doctor-fact-sheets/item/bacterial-blight",
+  Healthy: "https://www.knowledgebank.irri.org/decision-tools/rice-doctor",
+};
 
 function getDeviceCoordinates() {
   return new Promise((resolve) => {
@@ -35,6 +42,26 @@ function getDeviceCoordinates() {
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 },
     );
   });
+}
+
+async function compressImage(file) {
+  if (!file?.type?.startsWith("image/") || typeof createImageBitmap !== "function") return file;
+  const image = await createImageBitmap(file);
+  const maxDimension = 1600;
+  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+  if (scale === 1 && file.size < 1_500_000) {
+    image.close();
+    return file;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close();
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+  return blob
+    ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" })
+    : file;
 }
 
 function App() {
@@ -55,6 +82,8 @@ function App() {
     symptomNotes: "",
     symptomsConfirmed: false,
   });
+  const [language, setLanguage] = useState(() => localStorage.getItem("cropsense_language") || "en");
+  const t = translator(language);
 
   const isAdmin = auth.user?.role === "admin";
   const navItems = isAdmin ? [...navBase, "Admin"] : navBase;
@@ -74,6 +103,11 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("cropsense_language", language);
+    document.documentElement.lang = language;
+  }, [language]);
 
   const refreshAll = async () => {
     try {
@@ -179,12 +213,22 @@ function App() {
       <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-6 rounded-[2rem] border border-slate-200/80 bg-white/85 p-6 shadow-2xl backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/75 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.4em] text-slate-500 dark:text-slate-400">CropSense AI dashboard</p>
+            <p className="text-sm uppercase tracking-[0.4em] text-slate-500 dark:text-slate-400">{t("dashboardTitle")}</p>
             <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Welcome back, {auth.user.full_name || auth.user.email}</h1>
             <p className="mt-2 max-w-2xl text-slate-600 dark:text-slate-400">Monitor rice crop health, analyze uploads, check weather, and ask the AI assistant with a clean, responsive experience.</p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="sr-only" htmlFor="language-selector">Language</label>
+            <select
+              id="language-selector"
+              className="field min-w-32"
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+            >
+              <option value="en">English</option>
+              <option value="te">తెలుగు</option>
+            </select>
             <button className="btn-ghost w-full sm:w-auto" onClick={logout}>Logout</button>
             {isAdmin && <button className="btn-secondary w-full sm:w-auto" onClick={() => setActive("Admin")}>Admin</button>}
           </div>
@@ -204,7 +248,7 @@ function App() {
                   className={`rounded-3xl px-5 py-3 text-left text-sm font-medium transition ${active === item ? "bg-emerald-500 text-white shadow" : "bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:bg-slate-800"}`}
                   onClick={() => setActive(item)}
                 >
-                  {item}
+                  {t(`nav.${item}`)}
                 </button>
               ))}
             </nav>
@@ -226,13 +270,14 @@ function App() {
                 setUploadFile={setUploadFile}
                 diagnosisContext={diagnosisContext}
                 setDiagnosisContext={setDiagnosisContext}
+                t={t}
                 onPredict={runPredict}
                 isPredicting={isPredicting}
               />
             )}
             {active === "Results" && <Results result={result} />}
-            {active === "Weather" && <Weather onFetch={runWeather} weather={weather} />}
-            {active === "Chatbot" && <Chatbot messages={messages} setMessages={setMessages} chatInput={chatInput} setChatInput={setChatInput} onSend={sendChat} />}
+            {active === "Weather" && <Weather onFetch={runWeather} weather={weather} t={t} />}
+            {active === "Chatbot" && <Chatbot messages={messages} setMessages={setMessages} chatInput={chatInput} setChatInput={setChatInput} onSend={sendChat} t={t} language={language} />}
             {active === "Summary" && <Summary dashboard={dashboard} result={result} weather={weather} />}
             {active === "Admin" && isAdmin && <AdminPanel overview={adminOverview} users={adminUsers} />}
           </main>
@@ -422,6 +467,7 @@ function UploadCard({
   setUploadFile,
   diagnosisContext,
   setDiagnosisContext,
+  t,
   onPredict,
   isPredicting,
 }) {
@@ -432,9 +478,9 @@ function UploadCard({
     return () => URL.revokeObjectURL(uploadPreview);
   }, [uploadPreview]);
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     if (file && file.type.startsWith("image/")) {
-      setUploadFile(file);
+      setUploadFile(await compressImage(file));
     }
   };
 
@@ -451,7 +497,7 @@ function UploadCard({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="section-title">Upload</p>
-            <h3 className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">Upload a leaf photo</h3>
+            <h3 className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">{t("uploadPhoto")}</h3>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Submit a clear image and let the AI provide a diagnosis instantly.</p>
           </div>
           <span className="status-pill mild">Fast inference</span>
@@ -522,7 +568,7 @@ function UploadCard({
 
         <div className="mt-8 grid gap-3 sm:grid-cols-[1fr_auto]">
           <button className="btn w-full" onClick={onPredict} disabled={!uploadFile || isPredicting}>
-            {isPredicting ? "Analyzing..." : "Analyze crop"}
+            {isPredicting ? t("analyzing") : t("analyze")}
           </button>
           <button className="btn-ghost w-full" onClick={() => setUploadFile(null)}>Clear selection</button>
         </div>
@@ -572,6 +618,10 @@ export function Results({ result }) {
   const recommendations = Array.isArray(result.fertilizer?.fertiliser)
     ? result.fertilizer.fertiliser
     : [];
+  const alternatives = Object.entries(diseaseResult.all_probs || {})
+    .map(([name, probability]) => ({ name, probability: Number(probability) || 0 }))
+    .sort((left, right) => right.probability - left.probability)
+    .slice(0, 3);
   const locationAdvisories = Array.isArray(result.location_advisories)
     ? result.location_advisories
     : [];
@@ -672,6 +722,34 @@ export function Results({ result }) {
             </div>
             {feedbackState.message && <p className="mt-3 text-sm">{feedbackState.message}</p>}
           </div>
+
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-6 text-slate-900">
+            <h4 className="text-lg font-semibold">Why this result</h4>
+            <p className="mt-2 text-sm">
+              The model ranked image patterns across its supported classes. This is screening evidence, not laboratory confirmation.
+            </p>
+            {alternatives.length > 0 && (
+              <div className="mt-4 grid gap-2">
+                {alternatives.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between gap-4">
+                    <span>{item.name}</span>
+                    <span className="font-semibold">{Math.round(item.probability * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {diseaseResult.uncertainty_reason && (
+              <p className="mt-4 text-sm font-semibold text-amber-800">{diseaseResult.uncertainty_reason}</p>
+            )}
+            <a
+              className="mt-4 inline-block font-semibold text-emerald-800 underline"
+              href={diseaseSources[diseaseName] || "https://www.knowledgebank.irri.org/training/fact-sheets/pest-management/diseases"}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Review IRRI disease guidance
+            </a>
+          </div>
         </div>
       </div>
 
@@ -697,7 +775,7 @@ function SummaryRow({ label, value }) {
   );
 }
 
-function Weather({ onFetch, weather }) {
+function Weather({ onFetch, weather, t }) {
   const [locationStatus, setLocationStatus] = useState("");
 
   const fetchCurrentLocation = () => {
@@ -747,7 +825,7 @@ function Weather({ onFetch, weather }) {
           <div className="field flex items-center font-semibold text-slate-900">
             {weather?.location || "Location not detected yet"}
           </div>
-          <button className="btn-secondary w-full" onClick={fetchCurrentLocation}>Use my location</button>
+          <button className="btn-secondary w-full" onClick={fetchCurrentLocation}>{t("useLocation")}</button>
         </div>
         {locationStatus && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{locationStatus}</p>}
 
@@ -777,12 +855,33 @@ function Weather({ onFetch, weather }) {
   );
 }
 
-function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend }) {
+function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend, t, language }) {
   const quickPrompts = [
     "How to treat Leaf Blast?",
     "Best fertilizer for Brown Spot?",
     "When should I spray fungicide?",
   ];
+
+  const startVoiceInput = () => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      alert("Voice recognition is not supported by this browser.");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = language === "te" ? "te-IN" : "en-IN";
+    recognition.interimResults = false;
+    recognition.onresult = (event) => setChatInput(event.results[0][0].transcript);
+    recognition.start();
+  };
+
+  const speak = (text) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language === "te" ? "te-IN" : "en-IN";
+    window.speechSynthesis.speak(utterance);
+  };
 
   return (
     <section className="grid gap-6 xl:grid-cols-[1.4fr_0.75fr]">
@@ -790,7 +889,7 @@ function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend }) {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="section-title">AI assistant</p>
-            <h3 className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">Ask your farm expert</h3>
+            <h3 className="mt-3 text-2xl font-semibold text-slate-900 dark:text-slate-100">{t("askExpert")}</h3>
           </div>
           <span className="status-pill mild">Interactive</span>
         </div>
@@ -799,13 +898,19 @@ function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend }) {
           {messages.map((message, index) => (
             <div key={index} className={`bubble ${message.role} mb-4 max-w-[85%] rounded-3xl px-5 py-4 ${message.role === 'user' ? 'ml-auto bg-emerald-500 text-white' : 'bg-white text-slate-800 shadow dark:bg-slate-900/80 dark:text-slate-100'}`}>
               <p>{message.text}</p>
+              {message.role === "bot" && (
+                <button className="mt-3 text-sm font-semibold underline" onClick={() => speak(message.text)}>
+                  {t("speak")}
+                </button>
+              )}
             </div>
           ))}
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
           <input className="field chat-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a question" />
-          <button className="btn w-full sm:w-auto" onClick={onSend}>Send</button>
+          <button className="btn-secondary w-full sm:w-auto" onClick={startVoiceInput}>{t("voice")}</button>
+          <button className="btn w-full sm:w-auto" onClick={onSend}>{t("send")}</button>
         </div>
       </div>
 

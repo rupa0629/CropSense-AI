@@ -13,6 +13,10 @@ email-validator==2.3.0
 prometheus-client==0.25.0
 pydantic-settings==2.14.2
 redis==8.0.1
+psycopg[binary]==3.2.10
+SQLAlchemy==2.0.41
+alembic==1.16.2
+sentry-sdk[fastapi]==2.35.0
 
 # Test dependencies.
 pytest==9.1.1

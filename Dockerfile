@@ -30,10 +30,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /usr/local /usr/local
 COPY . /app
-RUN mkdir -p /app/data && chown -R appuser:appgroup /app
+RUN mkdir -p /app/data \
+    && chmod +x /app/scripts/start.sh \
+    && chown -R appuser:appgroup /app
 
 USER appuser
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8000/health/ready'); sys.exit(0)" || exit 1
-CMD ["sh", "-c", "exec uvicorn api_server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "/app/scripts/start.sh"]

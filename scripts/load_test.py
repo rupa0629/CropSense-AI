@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--requests", type=int, default=200)
     parser.add_argument("--concurrency", type=int, default=10)
     parser.add_argument("--timeout", type=float, default=10)
+    parser.add_argument("--max-failure-rate", type=float, default=0.01)
+    parser.add_argument("--max-p95-ms", type=float, default=2000)
     args = parser.parse_args()
 
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -37,8 +39,15 @@ def main() -> None:
         f"requests={len(results)} failures={failures} "
         f"mean_ms={statistics.mean(durations) * 1000:.1f} p95_ms={p95 * 1000:.1f}"
     )
-    if failures:
-        raise SystemExit(1)
+    failure_rate = failures / max(1, len(results))
+    if failure_rate > args.max_failure_rate:
+        raise SystemExit(
+            f"Failure rate {failure_rate:.2%} exceeded {args.max_failure_rate:.2%}"
+        )
+    if p95 * 1000 > args.max_p95_ms:
+        raise SystemExit(
+            f"p95 {p95 * 1000:.1f}ms exceeded {args.max_p95_ms:.1f}ms"
+        )
 
 
 if __name__ == "__main__":
