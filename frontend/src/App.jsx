@@ -49,7 +49,6 @@ function App() {
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState([{ role: "bot", text: "Hello. I am your AI farming assistant." }]);
   const [isPredicting, setIsPredicting] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
 
   const isAdmin = auth.user?.role === "admin";
   const navItems = isAdmin ? [...navBase, "Admin"] : navBase;
@@ -67,8 +66,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-  }, [darkMode]);
+    document.documentElement.classList.add("dark");
+  }, []);
 
   const refreshAll = async () => {
     try {
@@ -180,7 +179,6 @@ function App() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button className="btn w-full sm:w-auto" onClick={() => setDarkMode((mode) => !mode)}>{darkMode ? "Light mode" : "Dark mode"}</button>
             <button className="btn-ghost w-full sm:w-auto" onClick={logout}>Logout</button>
             {isAdmin && <button className="btn-secondary w-full sm:w-auto" onClick={() => setActive("Admin")}>Admin</button>}
           </div>
