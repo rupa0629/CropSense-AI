@@ -2,7 +2,7 @@
 
 Provides counters and histograms for HTTP requests and model inference.
 """
-from prometheus_client import Counter, Histogram, make_asgi_app
+from prometheus_client import Counter, Histogram, Info, make_asgi_app
 from typing import Callable
 
 
@@ -57,6 +57,24 @@ INFERENCE_LATENCY = Histogram(
     "Model inference latency in seconds",
     ["method"],
 )
+PREDICTION_CLASSES = Counter(
+    "cropsense_prediction_classes_total",
+    "Predicted classes used to detect production distribution drift",
+    ["disease"],
+)
+PREDICTION_CONFIDENCE = Histogram(
+    "cropsense_prediction_confidence",
+    "Distribution of top prediction confidence",
+    buckets=(0.0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0),
+)
+UNCERTAIN_PREDICTIONS = Counter(
+    "cropsense_uncertain_predictions_total",
+    "Predictions that require image retake or human review",
+)
+MODEL_INFO = Info(
+    "cropsense_model",
+    "Loaded production model identity",
+)
 
 # ASGI app that serves /metrics (Prometheus exposition)
 metrics_app = make_asgi_app()
@@ -67,5 +85,9 @@ __all__ = [
     "REQUEST_EXCEPTIONS",
     "PREDICTIONS",
     "INFERENCE_LATENCY",
+    "PREDICTION_CLASSES",
+    "PREDICTION_CONFIDENCE",
+    "UNCERTAIN_PREDICTIONS",
+    "MODEL_INFO",
     "metrics_app",
 ]

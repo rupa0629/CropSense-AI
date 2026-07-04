@@ -168,6 +168,46 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prediction_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                is_correct INTEGER NOT NULL,
+                corrected_disease TEXT,
+                notes TEXT,
+                review_status TEXT NOT NULL DEFAULT 'pending',
+                reviewed_by INTEGER,
+                reviewed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(analysis_id, user_id),
+                FOREIGN KEY(analysis_id) REFERENCES analysis_logs(id),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(reviewed_by) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agronomist_review_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id INTEGER NOT NULL UNIQUE,
+                user_id INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                crop_stage TEXT,
+                symptom_notes TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reviewer_notes TEXT,
+                reviewed_by INTEGER,
+                reviewed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(analysis_id) REFERENCES analysis_logs(id),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(reviewed_by) REFERENCES users(id)
+            )
+            """
+        )
 
 
 def create_user(full_name: str, email: str, password: str) -> tuple[bool, str]:
@@ -381,11 +421,76 @@ def get_user_settings(user_id: int) -> dict:
     return {"weather_api_key": row["weather_api_key"] or "", "default_location": row["default_location"] or "Delhi,IN"}
 
 
-def save_analysis_log(user_id: int, image_name: str, disease: str, confidence: float, severity: str, immediate_action: str) -> None:
+def save_analysis_log(user_id: int, image_name: str, disease: str, confidence: float, severity: str, immediate_action: str) -> int:
     with get_conn() as conn:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO analysis_logs (user_id, image_name, disease, confidence, severity, immediate_action) VALUES (?, ?, ?, ?, ?, ?)",
             (user_id, image_name, disease, confidence, severity, immediate_action),
+        )
+        return int(cursor.lastrowid)
+
+
+def save_prediction_feedback(
+    analysis_id: int,
+    user_id: int,
+    is_correct: bool,
+    corrected_disease: str | None,
+    notes: str | None,
+) -> bool:
+    with get_conn() as conn:
+        owner = conn.execute(
+            "SELECT 1 FROM analysis_logs WHERE id = ? AND user_id = ?",
+            (analysis_id, user_id),
+        ).fetchone()
+        if not owner:
+            return False
+        conn.execute(
+            """
+            INSERT INTO prediction_feedback
+                (analysis_id, user_id, is_correct, corrected_disease, notes)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(analysis_id, user_id) DO UPDATE SET
+                is_correct = excluded.is_correct,
+                corrected_disease = excluded.corrected_disease,
+                notes = excluded.notes,
+                review_status = 'pending',
+                reviewed_by = NULL,
+                reviewed_at = NULL
+            """,
+            (
+                analysis_id,
+                user_id,
+                int(is_correct),
+                corrected_disease.strip() if corrected_disease else None,
+                notes.strip() if notes else None,
+            ),
+        )
+    return True
+
+
+def enqueue_agronomist_review(
+    analysis_id: int,
+    user_id: int,
+    reason: str,
+    crop_stage: str | None,
+    symptom_notes: str | None,
+) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO agronomist_review_queue
+                (analysis_id, user_id, reason, crop_stage, symptom_notes)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(analysis_id) DO UPDATE SET
+                reason = excluded.reason,
+                crop_stage = excluded.crop_stage,
+                symptom_notes = excluded.symptom_notes,
+                status = 'pending',
+                reviewer_notes = NULL,
+                reviewed_by = NULL,
+                reviewed_at = NULL
+            """,
+            (analysis_id, user_id, reason, crop_stage, symptom_notes),
         )
 
 

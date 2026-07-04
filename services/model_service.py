@@ -6,7 +6,9 @@ centralizes GPU/CPU runtime configuration for production deployment.
 from __future__ import annotations
 
 import logging
+import hashlib
 import threading
+from pathlib import Path
 from PIL import Image
 import time
 from starlette.concurrency import run_in_threadpool
@@ -37,17 +39,53 @@ def initialize_model() -> None:
         if not settings.allow_heuristic_fallbacks and not disease_model.has_custom_model():
             raise RuntimeError(f"Trained model could not be loaded from {settings.model_path}")
         _initialized = True
+        model_path = Path(settings.model_path)
+        if not model_path.is_absolute():
+            model_path = Path(__file__).resolve().parent.parent / model_path
+        model_sha256 = "unavailable"
+        if model_path.is_file():
+            digest = hashlib.sha256()
+            with model_path.open("rb") as model_file:
+                for chunk in iter(lambda: model_file.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            model_sha256 = digest.hexdigest()
+        try:
+            from observability import monitoring
+
+            monitoring.MODEL_INFO.info(
+                {
+                    "sha256": model_sha256,
+                    "filename": model_path.name,
+                    "custom_model": str(disease_model.has_custom_model()).lower(),
+                }
+            )
+        except Exception:
+            logger.debug("Unable to publish model identity metric")
         logger.info(
-            "Model service initialized (custom=%s, backbone=%s, gpu=%s)",
+            "Model service initialized (custom=%s, backbone=%s, gpu=%s, sha256=%s)",
             disease_model.has_custom_model(),
             disease_model.has_backbone(),
             settings.model_use_gpu,
+            model_sha256,
         )
 
 
 def is_initialized() -> bool:
     """Return whether the model service completed initialization."""
     return _initialized
+
+
+def _record_prediction_metrics(result: dict, method: str, elapsed: float) -> None:
+    from observability import monitoring
+
+    confidence = max(0.0, min(1.0, float(result.get("confidence", 0.0))))
+    disease = str(result.get("disease", "unknown"))
+    monitoring.PREDICTIONS.labels(method=method).inc()
+    monitoring.INFERENCE_LATENCY.labels(method=method).observe(elapsed)
+    monitoring.PREDICTION_CLASSES.labels(disease=disease).inc()
+    monitoring.PREDICTION_CONFIDENCE.observe(confidence)
+    if result.get("needs_retake"):
+        monitoring.UNCERTAIN_PREDICTIONS.inc()
 
 
 async def initialize_model_async() -> None:
@@ -64,8 +102,7 @@ def predict_disease(image: Image.Image) -> dict:
     try:
         from observability import monitoring
 
-        monitoring.PREDICTIONS.labels(method="sync").inc()
-        monitoring.INFERENCE_LATENCY.labels(method="sync").observe(elapsed)
+        _record_prediction_metrics(result, "sync", elapsed)
     except Exception:
         logger.debug("Monitoring not available for prediction")
 
@@ -82,8 +119,7 @@ async def predict_disease_async(image: Image.Image) -> dict:
     try:
         from observability import monitoring
 
-        monitoring.PREDICTIONS.labels(method="async").inc()
-        monitoring.INFERENCE_LATENCY.labels(method="async").observe(elapsed)
+        _record_prediction_metrics(result, "async", elapsed)
     except Exception:
         logger.debug("Monitoring not available for async prediction")
 

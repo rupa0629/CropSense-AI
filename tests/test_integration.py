@@ -48,7 +48,13 @@ async def test_predict_endpoint(monkeypatch):
         r = await ac.post(
             "/predict",
             files=files,
-            data={"latitude": "14.75", "longitude": "78.55"},
+            data={
+                "latitude": "14.75",
+                "longitude": "78.55",
+                "crop_stage": "Tillering",
+                "symptom_notes": "Spindle lesions on leaves",
+                "symptoms_confirmed": "true",
+            },
             headers={},
         )
 
@@ -60,6 +66,16 @@ async def test_predict_endpoint(monkeypatch):
     assert body["weather"]["source"] == "live"
     assert any("humidity" in item.lower() for item in body["location_advisories"])
     assert any("postpone" in item.lower() for item in body["location_advisories"])
+    assert body["analysis_id"] > 0
+    assert body["symptoms_confirmed"] is True
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        feedback = await ac.post(
+            f"/predictions/{body['analysis_id']}/feedback",
+            json={"is_correct": False, "corrected_disease": "Brown Spot"},
+        )
+    assert feedback.status_code == 200
+    assert feedback.json()["ok"] is True
 
 
 

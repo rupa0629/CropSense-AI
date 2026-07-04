@@ -10,6 +10,9 @@ Example:
 from __future__ import annotations
 
 import argparse
+import csv
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +34,7 @@ def compute_from_cm(cm: np.ndarray) -> dict:
 
     precisions = []
     recalls = []
+    f1_scores = []
     per_class = {}
 
     for i, cls in enumerate(CLASS_NAMES):
@@ -39,22 +43,74 @@ def compute_from_cm(cm: np.ndarray) -> dict:
         fn = int(cm[i, :].sum() - tp)
         p = safe_div(tp, tp + fp)
         r = safe_div(tp, tp + fn)
+        f1 = safe_div(2 * p * r, p + r)
         precisions.append(p)
         recalls.append(r)
-        per_class[cls] = {"precision": p, "recall": r, "support": int(cm[i, :].sum())}
+        f1_scores.append(f1)
+        per_class[cls] = {
+            "precision": p,
+            "recall": r,
+            "f1": f1,
+            "support": int(cm[i, :].sum()),
+            "true_positives": tp,
+            "false_positives": fp,
+            "false_negatives": fn,
+        }
 
     return {
         "accuracy": accuracy,
         "macro_precision": float(np.mean(precisions)) if precisions else 0.0,
         "macro_recall": float(np.mean(recalls)) if recalls else 0.0,
+        "macro_f1": float(np.mean(f1_scores)) if f1_scores else 0.0,
         "per_class": per_class,
     }
+
+
+def write_report(output_dir: Path, model_path: Path, cm: np.ndarray, metrics: dict) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "model_path": str(model_path),
+        "class_names": CLASS_NAMES,
+        "metrics": metrics,
+        "confusion_matrix": cm.astype(int).tolist(),
+    }
+    (output_dir / "model-evaluation.json").write_text(
+        json.dumps(report, indent=2),
+        encoding="utf-8",
+    )
+
+    with (output_dir / "per-class-metrics.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "class",
+                "precision",
+                "recall",
+                "f1",
+                "support",
+                "true_positives",
+                "false_positives",
+                "false_negatives",
+            ],
+        )
+        writer.writeheader()
+        for class_name, values in metrics["per_class"].items():
+            writer.writerow({"class": class_name, **values})
+
+    with (output_dir / "confusion-matrix.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["actual/predicted", *CLASS_NAMES])
+        for class_name, row in zip(CLASS_NAMES, cm.astype(int).tolist()):
+            writer.writerow([class_name, *row])
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_root", required=True)
     parser.add_argument("--model_path", default="models/rice_disease_model.keras")
+    parser.add_argument("--output_dir", default="reports/model-evaluation")
+    parser.add_argument("--minimum_macro_f1", type=float, default=0.0)
     args = parser.parse_args()
 
     test_dir = Path(args.dataset_root).resolve() / "test"
@@ -95,12 +151,23 @@ def main() -> None:
     print(f"Accuracy: {metrics['accuracy']:.4f}")
     print(f"Macro Precision: {metrics['macro_precision']:.4f}")
     print(f"Macro Recall: {metrics['macro_recall']:.4f}")
+    print(f"Macro F1: {metrics['macro_f1']:.4f}")
 
     print("\nConfusion Matrix (rows=true, cols=pred):")
     print("\t" + "\t".join(CLASS_NAMES))
     for i, cls in enumerate(CLASS_NAMES):
         row = "\t".join(str(int(v)) for v in cm[i])
         print(f"{cls}\t{row}")
+
+    output_dir = Path(args.output_dir).resolve()
+    write_report(output_dir, model_path, cm, metrics)
+    print(f"\nWrote evaluation artifacts to: {output_dir}")
+
+    if metrics["macro_f1"] < args.minimum_macro_f1:
+        raise SystemExit(
+            f"Model rejected: macro F1 {metrics['macro_f1']:.4f} is below "
+            f"required {args.minimum_macro_f1:.4f}"
+        )
 
 
 if __name__ == "__main__":

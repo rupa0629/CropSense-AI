@@ -16,6 +16,8 @@ from utils.auth_db import (
     save_user_settings,
     save_weather_log,
     save_chat_log,
+    save_prediction_feedback,
+    enqueue_agronomist_review,
     get_dashboard_counts,
     get_recent_analysis,
     list_users,
@@ -39,6 +41,12 @@ class WeatherPayload(BaseModel):
 class ChatPayload(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     context: dict | None = None
+
+
+class PredictionFeedbackPayload(BaseModel):
+    is_correct: bool
+    corrected_disease: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 def _validate_image_file(image: UploadFile, data: bytes) -> Image.Image:
@@ -69,6 +77,9 @@ async def predict(
     image: UploadFile = File(...),
     latitude: float | None = Form(default=None),
     longitude: float | None = Form(default=None),
+    crop_stage: str | None = Form(default=None, max_length=80),
+    symptom_notes: str | None = Form(default=None, max_length=1000),
+    symptoms_confirmed: bool = Form(default=False),
     user: dict = Depends(current_user),
 ):
     data = await image.read()
@@ -82,7 +93,20 @@ async def predict(
         sr = classify_severity(dr["disease"], dr["confidence"], pil)
         fr = get_recommendation(dr["disease"], sr["level"])    
 
-    save_analysis_log(
+    if not symptoms_confirmed:
+        fr = {
+            "immediate_action": "Confirm visible symptoms before making a treatment decision.",
+            "fertiliser": [
+                "Compare the predicted disease with the symptom checklist.",
+                "Retake a whole-plant or field-pattern photo if symptoms do not match.",
+            ],
+            "pesticide": [],
+            "cultural": [],
+            "prevention": [],
+            "disease": dr["disease"],
+        }
+
+    analysis_id = save_analysis_log(
         user_id=int(user["id"]),
         image_name=image.filename or "uploaded_image",
         disease=dr["disease"],
@@ -90,6 +114,24 @@ async def predict(
         severity=sr["level"],
         immediate_action=fr.get("immediate_action", ""),
     )
+
+    escalation_reasons: list[str] = []
+    if dr.get("needs_retake") or float(dr.get("confidence", 0)) < 0.60:
+        escalation_reasons.append("uncertain prediction")
+    if sr.get("level") == "Severe":
+        escalation_reasons.append("severe symptoms")
+    if not symptoms_confirmed:
+        escalation_reasons.append("symptoms not confirmed")
+
+    requires_agronomist_review = bool(escalation_reasons)
+    if requires_agronomist_review:
+        enqueue_agronomist_review(
+            analysis_id=analysis_id,
+            user_id=int(user["id"]),
+            reason=", ".join(escalation_reasons),
+            crop_stage=crop_stage,
+            symptom_notes=symptom_notes,
+        )
 
     weather_context = None
     location_advisories: list[str] = []
@@ -131,11 +173,41 @@ async def predict(
 
     return {
         "ok": True,
+        "analysis_id": analysis_id,
         "disease": dr,
         "severity": sr,
         "fertilizer": fr,
         "weather": weather_context,
         "location_advisories": location_advisories,
+        "symptoms_confirmed": symptoms_confirmed,
+        "requires_agronomist_review": requires_agronomist_review,
+        "review_reasons": escalation_reasons,
+    }
+
+
+@router.post("/predictions/{analysis_id}/feedback")
+def prediction_feedback(
+    analysis_id: int,
+    payload: PredictionFeedbackPayload,
+    user: dict = Depends(current_user),
+):
+    if not payload.is_correct and not payload.corrected_disease:
+        raise HTTPException(
+            status_code=400,
+            detail="Corrected disease is required when the prediction is marked incorrect",
+        )
+    saved = save_prediction_feedback(
+        analysis_id=analysis_id,
+        user_id=int(user["id"]),
+        is_correct=payload.is_correct,
+        corrected_disease=payload.corrected_disease,
+        notes=payload.notes,
+    )
+    if not saved:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    return {
+        "ok": True,
+        "message": "Feedback saved for agronomist and model-quality review.",
     }
 
 

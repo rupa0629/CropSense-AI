@@ -111,13 +111,16 @@ export async function resetPassword(resetToken, newPassword) {
   );
 }
 
-export async function predictImage(file, coordinates = null) {
+export async function predictImage(file, coordinates = null, diagnosisContext = {}) {
   const form = new FormData();
   form.append("image", file);
   if (coordinates?.latitude != null && coordinates?.longitude != null) {
     form.append("latitude", String(coordinates.latitude));
     form.append("longitude", String(coordinates.longitude));
   }
+  if (diagnosisContext.cropStage) form.append("crop_stage", diagnosisContext.cropStage);
+  if (diagnosisContext.symptomNotes) form.append("symptom_notes", diagnosisContext.symptomNotes);
+  form.append("symptoms_confirmed", String(Boolean(diagnosisContext.symptomsConfirmed)));
 
   const token = getAccessToken();
   const { res, data } = await (async () => {
@@ -135,11 +138,19 @@ export async function predictImage(file, coordinates = null) {
       clearTokens();
       throw new Error("Session expired. Please login again.");
     }
-    return predictImage(file, coordinates);
+    return predictImage(file, coordinates, diagnosisContext);
   }
 
   if (!res.ok) throw new Error(data.detail || "Prediction failed");
   return data;
+}
+
+export async function submitPredictionFeedback(analysisId, payload) {
+  return request(
+    `/predictions/${analysisId}/feedback`,
+    { method: "POST", body: JSON.stringify(payload) },
+    true,
+  );
 }
 
 export async function fetchWeather(payload) {

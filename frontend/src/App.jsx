@@ -13,6 +13,7 @@ import {
   predictImage,
   registerUser,
   resetPassword,
+  submitPredictionFeedback,
 } from "./api";
 import "./App.css";
 
@@ -49,6 +50,11 @@ function App() {
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState([{ role: "bot", text: "Hello. I am your AI farming assistant." }]);
   const [isPredicting, setIsPredicting] = useState(false);
+  const [diagnosisContext, setDiagnosisContext] = useState({
+    cropStage: "",
+    symptomNotes: "",
+    symptomsConfirmed: false,
+  });
 
   const isAdmin = auth.user?.role === "admin";
   const navItems = isAdmin ? [...navBase, "Admin"] : navBase;
@@ -123,7 +129,7 @@ function App() {
     setIsPredicting(true);
     try {
       const coordinates = await getDeviceCoordinates();
-      const data = await predictImage(uploadFile, coordinates);
+      const data = await predictImage(uploadFile, coordinates, diagnosisContext);
       setResult(data);
       if (data.weather) setWeather(data.weather);
       setActive("Results");
@@ -214,7 +220,16 @@ function App() {
 
           <main className="flex flex-col gap-6">
             {active === "Dashboard" && <Dashboard dashboard={dashboard} history={history} />}
-            {active === "Upload" && <UploadCard uploadFile={uploadFile} setUploadFile={setUploadFile} onPredict={runPredict} isPredicting={isPredicting} />}
+            {active === "Upload" && (
+              <UploadCard
+                uploadFile={uploadFile}
+                setUploadFile={setUploadFile}
+                diagnosisContext={diagnosisContext}
+                setDiagnosisContext={setDiagnosisContext}
+                onPredict={runPredict}
+                isPredicting={isPredicting}
+              />
+            )}
             {active === "Results" && <Results result={result} />}
             {active === "Weather" && <Weather onFetch={runWeather} weather={weather} />}
             {active === "Chatbot" && <Chatbot messages={messages} setMessages={setMessages} chatInput={chatInput} setChatInput={setChatInput} onSend={sendChat} />}
@@ -402,7 +417,14 @@ function Metric({ title, value, description }) {
   );
 }
 
-function UploadCard({ uploadFile, setUploadFile, onPredict, isPredicting }) {
+function UploadCard({
+  uploadFile,
+  setUploadFile,
+  diagnosisContext,
+  setDiagnosisContext,
+  onPredict,
+  isPredicting,
+}) {
   const uploadPreview = useMemo(() => (uploadFile ? URL.createObjectURL(uploadFile) : ""), [uploadFile]);
 
   useEffect(() => {
@@ -461,6 +483,43 @@ function UploadCard({ uploadFile, setUploadFile, onPredict, isPredicting }) {
           </div>
         )}
 
+        <div className="mt-8 rounded-[1.75rem] border border-emerald-200 bg-white p-6 text-slate-900">
+          <h4 className="text-lg font-semibold">Confirm field symptoms</h4>
+          <p className="mt-2 text-sm text-slate-600">
+            This information helps distinguish similar diseases. Chemical advice remains withheld until symptoms are confirmed.
+          </p>
+          <div className="mt-5 grid gap-4">
+            <select
+              className="field"
+              value={diagnosisContext.cropStage}
+              onChange={(event) => setDiagnosisContext((current) => ({ ...current, cropStage: event.target.value }))}
+            >
+              <option value="">Select rice growth stage</option>
+              <option value="Seedling">Seedling</option>
+              <option value="Tillering">Tillering</option>
+              <option value="Panicle initiation">Panicle initiation</option>
+              <option value="Heading">Heading</option>
+              <option value="Grain filling">Grain filling</option>
+            </select>
+            <textarea
+              className="field min-h-28"
+              value={diagnosisContext.symptomNotes}
+              onChange={(event) => setDiagnosisContext((current) => ({ ...current, symptomNotes: event.target.value }))}
+              placeholder="Describe lesion shape, color, affected plant part, and field distribution"
+              maxLength={1000}
+            />
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 h-5 w-5"
+                checked={diagnosisContext.symptomsConfirmed}
+                onChange={(event) => setDiagnosisContext((current) => ({ ...current, symptomsConfirmed: event.target.checked }))}
+              />
+              <span>I compared the plant with the visible symptom checklist and confirm that the symptoms match.</span>
+            </label>
+          </div>
+        </div>
+
         <div className="mt-8 grid gap-3 sm:grid-cols-[1fr_auto]">
           <button className="btn w-full" onClick={onPredict} disabled={!uploadFile || isPredicting}>
             {isPredicting ? "Analyzing..." : "Analyze crop"}
@@ -483,6 +542,7 @@ function UploadCard({ uploadFile, setUploadFile, onPredict, isPredicting }) {
 }
 
 export function Results({ result }) {
+  const [feedbackState, setFeedbackState] = useState({ status: "", message: "" });
   if (!result) {
     return (
       <section className="glass-card p-8">
@@ -515,6 +575,25 @@ export function Results({ result }) {
   const locationAdvisories = Array.isArray(result.location_advisories)
     ? result.location_advisories
     : [];
+
+  const sendFeedback = async (isCorrect) => {
+    if (!result.analysis_id || feedbackState.status === "saving") return;
+    let correctedDisease = null;
+    if (!isCorrect) {
+      correctedDisease = window.prompt("What disease or issue do you believe this is?");
+      if (!correctedDisease?.trim()) return;
+    }
+    setFeedbackState({ status: "saving", message: "Saving feedback..." });
+    try {
+      await submitPredictionFeedback(result.analysis_id, {
+        is_correct: isCorrect,
+        corrected_disease: correctedDisease,
+      });
+      setFeedbackState({ status: "saved", message: "Thank you. Your feedback was saved for review." });
+    } catch (error) {
+      setFeedbackState({ status: "error", message: error.message || "Unable to save feedback." });
+    }
+  };
 
   return (
     <section className="grid gap-6 xl:grid-cols-[1.4fr_0.7fr]">
@@ -578,6 +657,21 @@ export function Results({ result }) {
               </p>
             </div>
           )}
+
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-6 text-slate-900">
+            <h4 className="text-lg font-semibold">Human confirmation</h4>
+            {result.requires_agronomist_review && (
+              <p className="mt-2 text-sm text-amber-800">
+                Agronomist review recommended: {(result.review_reasons || []).join(", ")}.
+              </p>
+            )}
+            <p className="mt-3">Was this diagnosis correct?</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button className="btn-secondary" onClick={() => sendFeedback(true)}>Yes, correct</button>
+              <button className="btn-ghost" onClick={() => sendFeedback(false)}>No, incorrect</button>
+            </div>
+            {feedbackState.message && <p className="mt-3 text-sm">{feedbackState.message}</p>}
+          </div>
         </div>
       </div>
 
