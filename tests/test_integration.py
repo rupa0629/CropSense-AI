@@ -22,9 +22,20 @@ async def test_predict_endpoint(monkeypatch):
 
     # Stub model prediction to avoid loading TF
     async def fake_predict_async(image):
-        return {"disease": "integration-test", "confidence": 0.77}
+        return {"disease": "Leaf Blast", "confidence": 0.77}
 
     monkeypatch.setattr('services.model_service.predict_disease_async', fake_predict_async)
+    monkeypatch.setattr(
+        'routers.app_routes.get_weather_advisory',
+        lambda **kwargs: {
+            "location": "Proddatur",
+            "temperature": 29.0,
+            "humidity": 88,
+            "description": "Light rain",
+            "wind_speed": 2.5,
+            "source": "live",
+        },
+    )
 
     # Create an in-memory JPEG image for upload
     buf = io.BytesIO()
@@ -34,12 +45,21 @@ async def test_predict_endpoint(monkeypatch):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         files = {"image": ("leaf.jpg", buf, "image/jpeg")}
-        r = await ac.post("/predict", files=files, headers={})
+        r = await ac.post(
+            "/predict",
+            files=files,
+            data={"latitude": "14.75", "longitude": "78.55"},
+            headers={},
+        )
 
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
-    assert body["disease"]["disease"] == "integration-test"
+    assert body["disease"]["disease"] == "Leaf Blast"
+    assert body["weather"]["location"] == "Proddatur"
+    assert body["weather"]["source"] == "live"
+    assert any("humidity" in item.lower() for item in body["location_advisories"])
+    assert any("postpone" in item.lower() for item in body["location_advisories"])
 
 
 

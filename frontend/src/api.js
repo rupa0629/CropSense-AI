@@ -111,9 +111,13 @@ export async function resetPassword(resetToken, newPassword) {
   );
 }
 
-export async function predictImage(file) {
+export async function predictImage(file, coordinates = null) {
   const form = new FormData();
   form.append("image", file);
+  if (coordinates?.latitude != null && coordinates?.longitude != null) {
+    form.append("latitude", String(coordinates.latitude));
+    form.append("longitude", String(coordinates.longitude));
+  }
 
   const token = getAccessToken();
   const { res, data } = await (async () => {
@@ -131,7 +135,7 @@ export async function predictImage(file) {
       clearTokens();
       throw new Error("Session expired. Please login again.");
     }
-    return predictImage(file);
+    return predictImage(file, coordinates);
   }
 
   if (!res.ok) throw new Error(data.detail || "Prediction failed");

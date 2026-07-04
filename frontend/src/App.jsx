@@ -18,6 +18,24 @@ import "./App.css";
 
 const navBase = ["Dashboard", "Upload", "Results", "Weather", "Chatbot", "Summary"];
 
+function getDeviceCoordinates() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 },
+    );
+  });
+}
+
 function App() {
   const [auth, setAuth] = useState({ loading: true, user: null });
   const [active, setActive] = useState("Dashboard");
@@ -105,8 +123,10 @@ function App() {
 
     setIsPredicting(true);
     try {
-      const data = await predictImage(uploadFile);
+      const coordinates = await getDeviceCoordinates();
+      const data = await predictImage(uploadFile, coordinates);
       setResult(data);
+      if (data.weather) setWeather(data.weather);
       setActive("Results");
       await refreshAll();
     } catch (error) {
@@ -494,6 +514,9 @@ export function Results({ result }) {
   const recommendations = Array.isArray(result.fertilizer?.fertiliser)
     ? result.fertilizer.fertiliser
     : [];
+  const locationAdvisories = Array.isArray(result.location_advisories)
+    ? result.location_advisories
+    : [];
 
   return (
     <section className="grid gap-6 xl:grid-cols-[1.4fr_0.7fr]">
@@ -532,6 +555,31 @@ export function Results({ result }) {
               </div>
             </div>
           </div>
+
+          {result.weather && (
+            <div className="weather-card rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h4 className="text-lg font-semibold">Location-aware guidance</h4>
+                  <p className="mt-2">
+                    {result.weather.location}: {result.weather.description}, {result.weather.temperature}°C,
+                    humidity {result.weather.humidity}%, wind {result.weather.wind_speed}.
+                  </p>
+                </div>
+                <span className="status-pill mild">
+                  {result.weather.source === "live" ? "Live local weather" : "Weather fallback"}
+                </span>
+              </div>
+              <ul className="mt-4 space-y-2">
+                {locationAdvisories.map((advice, index) => (
+                  <li key={index}>• {advice}</li>
+                ))}
+              </ul>
+              <p className="mt-4 text-sm">
+                Weather adjusts risk and action timing; it does not replace confirmation of the image diagnosis.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

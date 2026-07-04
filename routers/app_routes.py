@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query, Form
 from pydantic import BaseModel, Field
 from PIL import Image
 import io
@@ -65,7 +65,12 @@ def _validate_image_file(image: UploadFile, data: bytes) -> Image.Image:
 
 
 @router.post("/predict")
-async def predict(image: UploadFile = File(...), user: dict = Depends(current_user)):
+async def predict(
+    image: UploadFile = File(...),
+    latitude: float | None = Form(default=None),
+    longitude: float | None = Form(default=None),
+    user: dict = Depends(current_user),
+):
     data = await image.read()
     pil = _validate_image_file(image, data)
 
@@ -86,7 +91,52 @@ async def predict(image: UploadFile = File(...), user: dict = Depends(current_us
         immediate_action=fr.get("immediate_action", ""),
     )
 
-    return {"ok": True, "disease": dr, "severity": sr, "fertilizer": fr}
+    weather_context = None
+    location_advisories: list[str] = []
+    if latitude is not None and longitude is not None:
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            raise HTTPException(status_code=400, detail="Invalid location coordinates")
+
+        weather_context = get_weather_advisory(
+            location="Photo location",
+            latitude=latitude,
+            longitude=longitude,
+        )
+        humidity = float(weather_context.get("humidity", 0))
+        wind_speed = float(weather_context.get("wind_speed", 0))
+        description = str(weather_context.get("description", "")).lower()
+
+        if dr["disease"] in {"Leaf Blast", "Brown Spot"} and humidity >= 80:
+            location_advisories.append(
+                "High local humidity may favor fungal disease pressure; increase scouting and reduce prolonged leaf wetness."
+            )
+        if dr["disease"] == "Bacterial Blight" and (
+            humidity >= 70 or any(word in description for word in ("rain", "storm", "shower"))
+        ):
+            location_advisories.append(
+                "Humid or rainy local conditions can favor bacterial blight spread; avoid handling wet plants and improve drainage."
+            )
+        if any(word in description for word in ("rain", "storm", "shower")):
+            location_advisories.append(
+                "Rain is present or expected locally; postpone foliar treatment unless the registered product label explicitly allows it."
+            )
+        if wind_speed >= 5:
+            location_advisories.append(
+                "Local wind is too strong for reliable spraying; wait for calmer conditions and follow the product label."
+            )
+        if not location_advisories:
+            location_advisories.append(
+                "Current local weather does not add a major immediate risk signal; continue field scouting and follow the diagnosis guidance."
+            )
+
+    return {
+        "ok": True,
+        "disease": dr,
+        "severity": sr,
+        "fertilizer": fr,
+        "weather": weather_context,
+        "location_advisories": location_advisories,
+    }
 
 
 @router.post("/weather")
