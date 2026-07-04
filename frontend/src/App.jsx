@@ -451,7 +451,7 @@ function UploadCard({ uploadFile, setUploadFile, onPredict, isPredicting }) {
         </div>
       </div>
 
-      <div className="card p-8">
+      <div className="card checklist-card p-8">
         <div className="section-title">Upload checklist</div>
         <ul className="mt-6 space-y-3 text-sm text-slate-600 dark:text-slate-300">
           <li>Use a sharp, close-up view of the rice leaf.</li>
@@ -550,7 +550,7 @@ export function Results({ result }) {
 
 function SummaryRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between rounded-[1.75rem] border border-slate-200/80 bg-slate-50 px-5 py-4 dark:border-slate-700/80 dark:bg-slate-950/50">
+    <div className="summary-row flex items-center justify-between rounded-[1.75rem] border border-slate-200/80 bg-slate-50 px-5 py-4 dark:border-slate-700/80 dark:bg-slate-950/50">
       <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
       <span className="font-semibold text-slate-900 dark:text-slate-100">{value}</span>
     </div>
@@ -684,9 +684,16 @@ function Chatbot({ messages, setMessages, chatInput, setChatInput, onSend }) {
 }
 
 function Summary({ dashboard, result, weather }) {
+  const lastDisease = typeof result?.disease === "object"
+    ? result.disease?.disease
+    : result?.disease;
+  const lastConfidence = typeof result?.disease === "object"
+    ? result.disease?.confidence
+    : result?.confidence;
+
   return (
     <section className="grid gap-6 xl:grid-cols-3">
-      <div className="card p-8">
+      <div className="card summary-card p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">App snapshot</h3>
         <div className="mt-6 space-y-4">
           <SummaryRow label="Analyses" value={dashboard.counts?.analysis_count ?? 0} />
@@ -695,16 +702,16 @@ function Summary({ dashboard, result, weather }) {
         </div>
       </div>
 
-      <div className="card p-8">
+      <div className="card summary-card p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Last diagnosis</h3>
         <div className="mt-6 space-y-4">
-          <SummaryRow label="Disease" value={result?.disease || 'N/A'} />
+          <SummaryRow label="Disease" value={lastDisease || 'N/A'} />
           <SummaryRow label="Severity" value={result?.severity?.level || 'N/A'} />
-          <SummaryRow label="Confidence" value={`${Math.round((result?.confidence || 0) * 100)}%`} />
+          <SummaryRow label="Confidence" value={`${Math.round((Number(lastConfidence) || 0) * 100)}%`} />
         </div>
       </div>
 
-      <div className="card p-8">
+      <div className="card summary-card p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Weather summary</h3>
         <div className="mt-6 space-y-4">
           <SummaryRow label="Condition" value={weather?.description || 'N/A'} />
@@ -718,7 +725,7 @@ function Summary({ dashboard, result, weather }) {
 function AdminPanel({ overview, users }) {
   return (
     <section className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-      <div className="card p-8">
+      <div className="card admin-card p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Admin overview</h3>
         <div className="mt-6 space-y-4">
           <SummaryRow label="Users" value={overview?.users ?? 0} />
@@ -728,7 +735,7 @@ function AdminPanel({ overview, users }) {
         </div>
       </div>
 
-      <div className="card p-8 overflow-auto">
+      <div className="card users-card p-8 overflow-auto">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Users</h3>
         <div className="mt-6 overflow-x-auto">
           <table className="min-w-full text-left text-sm">

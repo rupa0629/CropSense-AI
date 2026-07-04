@@ -565,6 +565,59 @@ input {
   color: #111827;
 }
 
+.checklist-card,
+.checklist-card .section-title,
+.checklist-card li,
+.summary-card,
+.summary-card h3,
+.admin-card,
+.admin-card h3,
+.users-card,
+.users-card h3,
+.dark .checklist-card,
+.dark .checklist-card .section-title,
+.dark .checklist-card li,
+.dark .summary-card,
+.dark .summary-card h3,
+.dark .admin-card,
+.dark .admin-card h3,
+.dark .users-card,
+.dark .users-card h3 {
+  color: #111827;
+}
+
+.summary-row,
+.summary-row span,
+.dark .summary-row,
+.dark .summary-row span {
+  background: #f1f5f9;
+  color: #111827;
+}
+
+.users-card table,
+.users-card thead,
+.users-card tbody,
+.users-card tr,
+.users-card th,
+.users-card td,
+.dark .users-card table,
+.dark .users-card thead,
+.dark .users-card tbody,
+.dark .users-card tr,
+.dark .users-card th,
+.dark .users-card td {
+  background: #ffffff;
+  color: #111827;
+}
+
+.users-card thead,
+.users-card th,
+.dark .users-card thead,
+.dark .users-card th {
+  background: #e2e8f0;
+  color: #111827;
+}
+
 .chat-input-row {
   display: grid;
   grid-template-columns: 1fr auto;
