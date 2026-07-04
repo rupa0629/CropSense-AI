@@ -583,7 +583,7 @@ export function Results({ result }) {
         </div>
       </div>
 
-      <div className="card p-8">
+      <div className="card prediction-summary p-8">
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Prediction summary</h3>
         <div className="mt-6 space-y-4">
           <SummaryRow label="Disease" value={diseaseName} />

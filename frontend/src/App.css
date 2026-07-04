@@ -618,6 +618,43 @@ input {
   color: #111827;
 }
 
+.prediction-summary,
+.prediction-summary h3,
+.dark .prediction-summary,
+.dark .prediction-summary h3 {
+  color: #111827;
+}
+
+.prediction-summary .summary-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 20px;
+  min-height: 72px;
+  padding: 16px 20px;
+}
+
+.prediction-summary .summary-row span {
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.prediction-summary .summary-row span:last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .prediction-summary .summary-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .prediction-summary .summary-row span:last-child {
+    text-align: left;
+  }
+}
+
 .chat-input-row {
   display: grid;
   grid-template-columns: 1fr auto;
