@@ -21,6 +21,8 @@ from utils.auth_db import (
     get_dashboard_counts,
     get_recent_analysis,
     list_users,
+    list_agronomist_reviews,
+    complete_agronomist_review,
     get_admin_overview,
 )
 from utils.chatbot import get_response
@@ -47,6 +49,11 @@ class PredictionFeedbackPayload(BaseModel):
     is_correct: bool
     corrected_disease: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=1000)
+
+
+class AgronomistReviewPayload(BaseModel):
+    status: str = Field(pattern="^(approved|rejected|needs_more_information)$")
+    notes: str = Field(min_length=3, max_length=2000)
 
 
 def _validate_image_file(image: UploadFile, data: bytes) -> Image.Image:
@@ -273,3 +280,32 @@ def admin_overview(admin: dict = Depends(require_admin)):
 @router.get("/admin/users")
 def admin_users(limit: int = 100, admin: dict = Depends(require_admin)):
     return {"ok": True, "users": list_users(limit=limit)}
+
+
+@router.get("/admin/agronomist-reviews")
+def admin_agronomist_reviews(
+    status: str = Query(default="pending", pattern="^(pending|approved|rejected|needs_more_information)$"),
+    limit: int = Query(default=100, ge=1, le=200),
+    admin: dict = Depends(require_admin),
+):
+    return {
+        "ok": True,
+        "reviews": list_agronomist_reviews(limit=limit, status=status),
+    }
+
+
+@router.post("/admin/agronomist-reviews/{review_id}")
+def review_agronomist_case(
+    review_id: int,
+    payload: AgronomistReviewPayload,
+    admin: dict = Depends(require_admin),
+):
+    updated = complete_agronomist_review(
+        review_id=review_id,
+        reviewer_id=int(admin["id"]),
+        status=payload.status,
+        reviewer_notes=payload.notes,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Pending review not found")
+    return {"ok": True, "message": "Review decision recorded"}

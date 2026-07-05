@@ -168,3 +168,15 @@ export async function getAdminOverview() {
 export async function getAdminUsers() {
   return request("/admin/users", { method: "GET" }, true);
 }
+
+export async function getAgronomistReviews() {
+  return request("/admin/agronomist-reviews?status=pending", { method: "GET" }, true);
+}
+
+export async function submitAgronomistReview(reviewId, payload) {
+  return request(
+    `/admin/agronomist-reviews/${reviewId}`,
+    { method: "POST", body: JSON.stringify(payload) },
+    true,
+  );
+}

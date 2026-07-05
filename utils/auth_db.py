@@ -691,3 +691,54 @@ def purge_expired_data(
         )
     return deleted
 
+
+def list_agronomist_reviews(limit: int = 100, status: str = "pending") -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                q.id,
+                q.analysis_id,
+                q.user_id,
+                q.reason,
+                q.crop_stage,
+                q.symptom_notes,
+                q.status,
+                q.reviewer_notes,
+                q.reviewed_by,
+                q.reviewed_at,
+                q.created_at,
+                a.disease,
+                a.confidence,
+                a.severity
+            FROM agronomist_review_queue q
+            JOIN analysis_logs a ON a.id = q.analysis_id
+            WHERE q.status = ?
+            ORDER BY q.id ASC
+            LIMIT ?
+            """,
+            (status, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def complete_agronomist_review(
+    review_id: int,
+    reviewer_id: int,
+    status: str,
+    reviewer_notes: str,
+) -> bool:
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE agronomist_review_queue
+            SET status = ?,
+                reviewer_notes = ?,
+                reviewed_by = ?,
+                reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'pending'
+            """,
+            (status, reviewer_notes.strip(), reviewer_id, review_id),
+        )
+        return int(cursor.rowcount or 0) == 1
+

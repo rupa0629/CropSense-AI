@@ -5,6 +5,7 @@ import {
   forgotPassword,
   getAdminOverview,
   getAdminUsers,
+  getAgronomistReviews,
   getDashboard,
   getHistory,
   getMe,
@@ -14,6 +15,7 @@ import {
   registerUser,
   resetPassword,
   submitPredictionFeedback,
+  submitAgronomistReview,
 } from "./api";
 import "./App.css";
 import { translator } from "./i18n";
@@ -71,6 +73,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [adminOverview, setAdminOverview] = useState(null);
   const [adminUsers, setAdminUsers] = useState([]);
+  const [adminReviews, setAdminReviews] = useState([]);
   const [uploadFile, setUploadFile] = useState(null);
   const [result, setResult] = useState(null);
   const [weather, setWeather] = useState(null);
@@ -125,8 +128,10 @@ function App() {
     try {
       const ov = await getAdminOverview();
       const us = await getAdminUsers();
+      const reviews = await getAgronomistReviews();
       setAdminOverview(ov.overview);
       setAdminUsers(us.users || []);
+      setAdminReviews(reviews.reviews || []);
     } catch (error) {
       console.error(error);
     }
@@ -279,7 +284,14 @@ function App() {
             {active === "Weather" && <Weather onFetch={runWeather} weather={weather} t={t} />}
             {active === "Chatbot" && <Chatbot messages={messages} setMessages={setMessages} chatInput={chatInput} setChatInput={setChatInput} onSend={sendChat} t={t} language={language} />}
             {active === "Summary" && <Summary dashboard={dashboard} result={result} weather={weather} />}
-            {active === "Admin" && isAdmin && <AdminPanel overview={adminOverview} users={adminUsers} />}
+            {active === "Admin" && isAdmin && (
+              <AdminPanel
+                overview={adminOverview}
+                users={adminUsers}
+                reviews={adminReviews}
+                onRefresh={loadAdmin}
+              />
+            )}
           </main>
         </div>
       </div>
@@ -967,7 +979,21 @@ function Summary({ dashboard, result, weather }) {
   );
 }
 
-function AdminPanel({ overview, users }) {
+function AdminPanel({ overview, users, reviews, onRefresh }) {
+  const [reviewMessage, setReviewMessage] = useState("");
+
+  const decideReview = async (review, status) => {
+    const notes = window.prompt("Enter the agronomist's evidence and review notes:");
+    if (!notes?.trim()) return;
+    try {
+      await submitAgronomistReview(review.id, { status, notes });
+      setReviewMessage("Review decision recorded.");
+      await onRefresh();
+    } catch (error) {
+      setReviewMessage(error.message || "Unable to record review.");
+    }
+  };
+
   return (
     <section className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
       <div className="card admin-card p-8">
@@ -1005,6 +1031,37 @@ function AdminPanel({ overview, users }) {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="card users-card p-8 xl:col-span-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-semibold">Agronomist review queue</h3>
+            <p className="mt-2 text-sm">Uncertain, severe, or unconfirmed predictions requiring human assessment.</p>
+          </div>
+          <span className="status-pill mild">{reviews.length} pending</span>
+        </div>
+        {reviewMessage && <p className="mt-4 text-sm">{reviewMessage}</p>}
+        <div className="mt-6 grid gap-4">
+          {reviews.map((review) => (
+            <article key={review.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryRow label="Prediction" value={review.disease} />
+                <SummaryRow label="Confidence" value={`${Math.round(Number(review.confidence) * 100)}%`} />
+                <SummaryRow label="Severity" value={review.severity} />
+                <SummaryRow label="Crop stage" value={review.crop_stage || "Not provided"} />
+              </div>
+              <p className="mt-4"><strong>Reason:</strong> {review.reason}</p>
+              <p className="mt-2"><strong>Symptoms:</strong> {review.symptom_notes || "Not provided"}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button className="btn-secondary" onClick={() => decideReview(review, "approved")}>Approve</button>
+                <button className="btn-ghost" onClick={() => decideReview(review, "needs_more_information")}>Request information</button>
+                <button className="btn-ghost" onClick={() => decideReview(review, "rejected")}>Reject</button>
+              </div>
+            </article>
+          ))}
+          {!reviews.length && <p>No pending agronomist reviews.</p>}
         </div>
       </div>
     </section>

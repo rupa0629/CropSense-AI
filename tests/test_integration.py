@@ -22,7 +22,12 @@ async def test_predict_endpoint(monkeypatch):
 
     # Stub model prediction to avoid loading TF
     async def fake_predict_async(image):
-        return {"disease": "Leaf Blast", "confidence": 0.77}
+        return {
+            "disease": "Leaf Blast",
+            "confidence": 0.42,
+            "needs_retake": True,
+            "uncertainty_reason": "Low confidence prediction.",
+        }
 
     monkeypatch.setattr('services.model_service.predict_disease_async', fake_predict_async)
     monkeypatch.setattr(
@@ -68,6 +73,7 @@ async def test_predict_endpoint(monkeypatch):
     assert any("postpone" in item.lower() for item in body["location_advisories"])
     assert body["analysis_id"] > 0
     assert body["symptoms_confirmed"] is True
+    assert body["requires_agronomist_review"] is True
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         feedback = await ac.post(
@@ -76,6 +82,19 @@ async def test_predict_endpoint(monkeypatch):
         )
     assert feedback.status_code == 200
     assert feedback.json()["ok"] is True
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        reviews = await ac.get("/admin/agronomist-reviews")
+        assert reviews.status_code == 200
+        pending = reviews.json()["reviews"]
+        assert len(pending) == 1
+        decision = await ac.post(
+            f"/admin/agronomist-reviews/{pending[0]['id']}",
+            json={"status": "approved", "notes": "Symptoms reviewed against field notes."},
+        )
+        assert decision.status_code == 200
+        after = await ac.get("/admin/agronomist-reviews")
+    assert after.json()["reviews"] == []
 
 
 
