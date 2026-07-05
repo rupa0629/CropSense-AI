@@ -33,6 +33,32 @@ has succeeded.
    then switch production `DATABASE_URL`.
 10. Keep the old SQLite volume read-only for the agreed rollback window.
 
+## Railway private-network transfer
+
+To avoid exposing credentials through a public TCP proxy, the backend startup
+supports a one-time transfer while the application still serves SQLite:
+
+```text
+DATABASE_URL=sqlite:////app/data/cropsense.db
+MIGRATION_DATABASE_URL=${{Postgres.DATABASE_URL}}
+MIGRATE_SQLITE_TO_POSTGRES=true
+LEGACY_SQLITE_PATH=/app/data/cropsense.db
+RUN_DATABASE_MIGRATIONS=false
+```
+
+On that deployment, startup migrates the empty PostgreSQL schema, copies every
+SQLite table, verifies row counts, and then starts the application against the
+unchanged SQLite database. Immediately remove
+`MIGRATE_SQLITE_TO_POSTGRES` and `MIGRATION_DATABASE_URL` after the successful
+transfer so a later deployment cannot attempt to copy into non-empty tables.
+
+Only after backup/restore rehearsal should production change to:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+RUN_DATABASE_MIGRATIONS=true
+```
+
 Use Railway managed backups plus an independent encrypted export:
 
 ```sh
