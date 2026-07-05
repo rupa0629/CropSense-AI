@@ -8,13 +8,30 @@ has succeeded.
 3. Set `RUN_DATABASE_MIGRATIONS=true`.
 4. Deploy; `scripts/start.sh` runs `alembic upgrade head` before the API starts.
 5. Run the full API and browser suites against staging.
-6. Export SQLite records with a purpose-built one-time migration command,
-   import them into staging, and compare row counts and sampled records.
-7. Create an encrypted PostgreSQL backup and restore it into a disposable
+6. Audit the transfer without writing:
+
+   ```powershell
+   python scripts/migrate_sqlite_to_postgres.py `
+     --sqlite C:\path\to\cropsense.db `
+     --postgres-url $env:STAGING_DATABASE_URL
+   ```
+
+7. If every destination table is empty and the dry run is correct, execute:
+
+   ```powershell
+   python scripts/migrate_sqlite_to_postgres.py `
+     --sqlite C:\path\to\cropsense.db `
+     --postgres-url $env:STAGING_DATABASE_URL `
+     --execute
+   ```
+
+   The command preserves IDs, refuses non-empty target tables and verifies
+   every row count before committing.
+8. Create an encrypted PostgreSQL backup and restore it into a disposable
    database. Verify login, history, feedback and review queues.
-8. Schedule a maintenance window, stop writes, repeat export/import, validate,
+9. Schedule a maintenance window, stop writes, repeat export/import, validate,
    then switch production `DATABASE_URL`.
-9. Keep the old SQLite volume read-only for the agreed rollback window.
+10. Keep the old SQLite volume read-only for the agreed rollback window.
 
 Use Railway managed backups plus an independent encrypted export:
 
