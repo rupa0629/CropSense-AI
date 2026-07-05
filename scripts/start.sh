@@ -7,11 +7,20 @@ if [ "${MIGRATE_SQLITE_TO_POSTGRES:-false}" = "true" ]; then
     exit 1
   fi
   LEGACY_SQLITE_PATH="${LEGACY_SQLITE_PATH:-/app/data/cropsense.db}"
+  if [ "${RUN_BACKUP_REHEARSAL:-false}" != "true" ]; then
+    echo "RUN_BACKUP_REHEARSAL=true is required for the production cutover" >&2
+    exit 1
+  fi
+  python scripts/rehearse_database_cutover.py sqlite \
+    --sqlite "${LEGACY_SQLITE_PATH}"
   DATABASE_URL="${MIGRATION_DATABASE_URL}" alembic upgrade head
   python scripts/migrate_sqlite_to_postgres.py \
     --sqlite "${LEGACY_SQLITE_PATH}" \
     --postgres-url "${MIGRATION_DATABASE_URL}" \
     --execute
+  python scripts/rehearse_database_cutover.py postgres \
+    --postgres-url "${MIGRATION_DATABASE_URL}"
+  echo "CUTOVER_REHEARSAL_PASSED"
 fi
 
 if [ "${RUN_DATABASE_MIGRATIONS:-false}" = "true" ]; then

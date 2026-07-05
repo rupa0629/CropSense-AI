@@ -43,14 +43,24 @@ DATABASE_URL=sqlite:////app/data/cropsense.db
 MIGRATION_DATABASE_URL=${{Postgres.DATABASE_URL}}
 MIGRATE_SQLITE_TO_POSTGRES=true
 LEGACY_SQLITE_PATH=/app/data/cropsense.db
+RUN_BACKUP_REHEARSAL=true
+BACKUP_ENCRYPTION_KEY=${{secret(64)}}
+BACKUP_OUTPUT=/app/data/backups
 RUN_DATABASE_MIGRATIONS=false
 ```
 
-On that deployment, startup migrates the empty PostgreSQL schema, copies every
-SQLite table, verifies row counts, and then starts the application against the
-unchanged SQLite database. Immediately remove
-`MIGRATE_SQLITE_TO_POSTGRES` and `MIGRATION_DATABASE_URL` after the successful
-transfer so a later deployment cannot attempt to copy into non-empty tables.
+On that deployment, startup creates an encrypted SQLite snapshot and verifies a
+decrypted copy with `PRAGMA integrity_check`. It then migrates the empty
+PostgreSQL schema, copies every SQLite table, and verifies row counts. Finally,
+it creates an encrypted PostgreSQL custom-format dump, restores it into an
+isolated temporary database, compares every application table's row count, and
+drops the temporary database. The deployment log must contain
+`CUTOVER_REHEARSAL_PASSED`; otherwise do not switch production.
+
+Immediately remove `MIGRATE_SQLITE_TO_POSTGRES`, `MIGRATION_DATABASE_URL`, and
+`RUN_BACKUP_REHEARSAL` after the successful transfer so a later deployment
+cannot attempt to copy into non-empty tables. Keep `BACKUP_ENCRYPTION_KEY`
+secret and retain the encrypted files under `/app/data/backups`.
 
 Only after backup/restore rehearsal should production change to:
 
@@ -59,7 +69,8 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 RUN_DATABASE_MIGRATIONS=true
 ```
 
-Use Railway managed backups plus an independent encrypted export:
+Railway managed volume backups require a paid plan. If that feature is enabled,
+use it in addition to the independent encrypted export:
 
 ```sh
 python scripts/backup_postgres.py

@@ -24,6 +24,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libnsl2 \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system appgroup \
     && useradd --system --gid appgroup --home-dir /app --shell /usr/sbin/nologin appuser
