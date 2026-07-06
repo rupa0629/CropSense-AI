@@ -2,7 +2,8 @@
 set -eu
 
 if [ "${MIGRATE_SQLITE_TO_POSTGRES:-false}" = "true" ] \
-  && [ "${CUTOVER_EXECUTION_APPROVED:-}" = "execute-once" ]; then
+  && [ "${CUTOVER_EXECUTION_APPROVED:-}" = "execute-once" ] \
+  && [ "${CUTOVER_EXECUTION_REV:-}" = "ec4afc5" ]; then
   if [ -z "${MIGRATION_DATABASE_URL:-}" ]; then
     echo "MIGRATION_DATABASE_URL is required for one-time data migration" >&2
     exit 1
