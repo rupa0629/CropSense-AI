@@ -133,7 +133,8 @@ def main() -> None:
                     sql.SQL(", ").join(map(sql.Identifier, columns)),
                     sql.SQL(", ").join(sql.Placeholder() for _ in columns),
                 )
-                target.executemany(statement, [tuple(row[column] for column in columns) for row in rows])
+                with target.cursor() as cursor:
+                    cursor.executemany(statement, [tuple(row[column] for column in columns) for row in rows])
 
             for table in IDENTITY_TABLES:
                 target.execute(
