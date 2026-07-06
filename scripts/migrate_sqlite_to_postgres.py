@@ -63,6 +63,11 @@ def main() -> None:
         action="store_true",
         help="Perform the transfer. Without this flag only counts and schema compatibility are checked.",
     )
+    parser.add_argument(
+        "--allow-verified-existing",
+        action="store_true",
+        help="Treat an existing target as complete only when every application table row count matches SQLite.",
+    )
     args = parser.parse_args()
 
     source_path = Path(args.sqlite).resolve()
@@ -74,7 +79,7 @@ def main() -> None:
     with sqlite3.connect(f"file:{source_path}?mode=ro", uri=True) as source:
         source.row_factory = sqlite3.Row
         with psycopg.connect(args.postgres_url) as target:
-            plans: list[tuple[str, list[str], int]] = []
+            plans: list[tuple[str, list[str], int, int]] = []
             for table in TABLES:
                 source_cols = sqlite_columns(source, table)
                 target_cols = postgres_columns(target, table)
@@ -87,19 +92,37 @@ def main() -> None:
                 target_count = int(
                     target.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table))).fetchone()[0]
                 )
-                if target_count:
-                    raise SystemExit(f"Refusing migration: target table {table} contains {target_count} rows")
-                plans.append((table, columns, source_count))
+                plans.append((table, columns, source_count, target_count))
 
-            for table, columns, count in plans:
-                print(f"{table}: {count} row(s), {len(columns)} compatible column(s)")
+            for table, columns, source_count, target_count in plans:
+                print(
+                    f"{table}: source={source_count}, target={target_count}, "
+                    f"{len(columns)} compatible column(s)"
+                )
+
+            populated = [(table, source_count, target_count) for table, _, source_count, target_count in plans if target_count]
+            if populated:
+                mismatches = [
+                    (table, source_count, target_count)
+                    for table, _, source_count, target_count in plans
+                    if source_count != target_count
+                ]
+                if args.allow_verified_existing and not mismatches:
+                    print("Existing PostgreSQL transfer verified: all application table row counts match SQLite.")
+                    target.rollback()
+                    return
+                detail = ", ".join(
+                    f"{table} source={source_count} target={target_count}"
+                    for table, source_count, target_count in (mismatches or populated)
+                )
+                raise SystemExit(f"Refusing migration into populated target: {detail}")
 
             if not args.execute:
                 print("Dry run complete. Re-run with --execute during the approved maintenance window.")
                 target.rollback()
                 return
 
-            for table, columns, expected_count in plans:
+            for table, columns, expected_count, _ in plans:
                 if not expected_count:
                     continue
                 rows = source.execute(
@@ -125,7 +148,7 @@ def main() -> None:
                     )
                 )
 
-            for table, _, expected_count in plans:
+            for table, _, expected_count, _ in plans:
                 actual_count = int(
                     target.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table))).fetchone()[0]
                 )

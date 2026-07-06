@@ -7,6 +7,10 @@ if [ "${MIGRATE_SQLITE_TO_POSTGRES:-false}" = "true" ]; then
     exit 1
   fi
   LEGACY_SQLITE_PATH="${LEGACY_SQLITE_PATH:-/app/data/cropsense.db}"
+  CUTOVER_MARKER="${CUTOVER_MARKER:-/app/data/.postgres-cutover-rehearsed}"
+  if [ -f "${CUTOVER_MARKER}" ]; then
+    echo "CUTOVER_REHEARSAL_ALREADY_PASSED"
+  else
   if [ "${RUN_BACKUP_REHEARSAL:-false}" != "true" ]; then
     echo "RUN_BACKUP_REHEARSAL=true is required for the production cutover" >&2
     exit 1
@@ -17,10 +21,14 @@ if [ "${MIGRATE_SQLITE_TO_POSTGRES:-false}" = "true" ]; then
   python scripts/migrate_sqlite_to_postgres.py \
     --sqlite "${LEGACY_SQLITE_PATH}" \
     --postgres-url "${MIGRATION_DATABASE_URL}" \
-    --execute
+    --execute \
+    --allow-verified-existing
   python scripts/rehearse_database_cutover.py postgres \
     --postgres-url "${MIGRATION_DATABASE_URL}"
+  umask 077
+  printf '%s\n' "verified" > "${CUTOVER_MARKER}"
   echo "CUTOVER_REHEARSAL_PASSED"
+  fi
 fi
 
 if [ "${RUN_DATABASE_MIGRATIONS:-false}" = "true" ]; then
