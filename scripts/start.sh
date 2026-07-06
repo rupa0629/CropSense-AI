@@ -17,7 +17,18 @@ if [ "${MIGRATE_SQLITE_TO_POSTGRES:-false}" = "true" ]; then
   fi
   python scripts/rehearse_database_cutover.py sqlite \
     --sqlite "${LEGACY_SQLITE_PATH}"
-  DATABASE_URL="${MIGRATION_DATABASE_URL}" alembic upgrade head
+  case "${MIGRATION_DATABASE_URL}" in
+    postgresql://*)
+      ALEMBIC_DATABASE_URL="postgresql+psycopg://${MIGRATION_DATABASE_URL#postgresql://}"
+      ;;
+    postgres://*)
+      ALEMBIC_DATABASE_URL="postgresql+psycopg://${MIGRATION_DATABASE_URL#postgres://}"
+      ;;
+    *)
+      ALEMBIC_DATABASE_URL="${MIGRATION_DATABASE_URL}"
+      ;;
+  esac
+  DATABASE_URL="${ALEMBIC_DATABASE_URL}" alembic upgrade head
   python scripts/migrate_sqlite_to_postgres.py \
     --sqlite "${LEGACY_SQLITE_PATH}" \
     --postgres-url "${MIGRATION_DATABASE_URL}" \
